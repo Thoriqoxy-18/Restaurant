@@ -21,8 +21,15 @@ class CustomerSession extends Model
         static::creating(fn ($s) => $s->session_token ??= Str::random(64));
     }
 
-    public function restaurantTable(): BelongsTo { return $this->belongsTo(RestaurantTable::class); }
-    public function orders(): HasMany { return $this->hasMany(Order::class); }
+    public function restaurantTable(): BelongsTo
+    {
+        return $this->belongsTo(RestaurantTable::class);
+    }
+
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
+    }
 
     public function isValid(): bool
     {

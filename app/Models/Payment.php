@@ -14,6 +14,13 @@ class Payment extends Model
         return ['amount' => 'decimal:2', 'paid_at' => 'datetime'];
     }
 
-    public function order(): BelongsTo { return $this->belongsTo(Order::class); }
-    public function kasir(): BelongsTo { return $this->belongsTo(User::class, 'kasir_id'); }
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
+    }
+
+    public function kasir(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'kasir_id');
+    }
 }

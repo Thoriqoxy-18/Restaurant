@@ -1,71 +1,90 @@
 @extends('admin.layouts.app')
-@section('title', 'Orders - ' . config('app.name'))
+@section('title', 'Manajemen Pesanan - Verdant Bistro')
+
 @section('content')
-<div class="space-y-6">
-    <div class="flex items-center justify-between">
+@php
+    $statusLabel = ['pending' => 'Baru', 'confirmed' => 'Diterima', 'preparing' => 'Diproses', 'served' => 'Siap Diambil', 'completed' => 'Selesai', 'cancelled' => 'Dibatalkan'];
+    $statusClass = ['pending' => 'bg-error-container text-on-error-container border border-error/20', 'confirmed' => 'bg-tertiary-container/10 text-tertiary-container', 'preparing' => 'bg-tertiary-container/10 text-tertiary-container', 'served' => 'bg-primary-fixed text-on-primary-fixed border border-primary-fixed-dim/50', 'completed' => 'bg-surface-container-high text-on-surface-variant', 'cancelled' => 'bg-surface-container-high text-on-surface-variant'];
+    $payLabel = ['qris' => 'QRIS', 'cash' => 'Tunai'];
+@endphp
+
+<div class="max-w-container-max mx-auto p-margin-mobile md:p-margin-desktop flex flex-col gap-6" x-data="{ q: '', f: 'all' }">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-            <h2 class="text-xl font-bold text-gray-800">Orders</h2>
-            <p class="text-sm text-gray-500">View all orders across all tables.</p>
+            <h2 class="font-headline-lg text-headline-lg text-on-background">Manajemen Pesanan</h2>
+            <p class="font-body-md text-body-md text-on-surface-variant mt-1">Pantau dan kelola semua pesanan aktif restoran.</p>
         </div>
-        <span class="text-xs font-medium px-3 py-1.5 rounded-full bg-gray-100 text-gray-500">{{ $orders->count() }} total</span>
+        <div class="relative w-full md:w-64">
+            <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+            <input x-model="q" class="w-full pl-10 pr-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md text-body-md text-on-surface focus:border-secondary focus:ring-2 focus:ring-secondary/20 transition-all outline-none" placeholder="Cari nomor pesanan atau meja..." type="text"/>
+        </div>
     </div>
 
-    @if ($orders->isEmpty())
-        <div class="text-center py-16 bg-white rounded-xl border border-gray-200">
-            <span class="material-symbols-outlined text-4xl text-gray-300">receipt_long</span>
-            <h3 class="text-base font-semibold text-gray-700 mt-2">No orders</h3>
-            <p class="text-sm text-gray-400">Orders will appear once customers start ordering.</p>
+    <div class="flex flex-wrap gap-2 pb-2">
+        @foreach ([
+            'all' => 'Semua', 'pending' => 'Baru', 'proses' => 'Diproses', 'served' => 'Siap Disajikan', 'completed' => 'Selesai', 'cancelled' => 'Dibatalkan'
+        ] as $key => $label)
+        <button @click="f = '{{ $key }}'" :class="f === '{{ $key }}' ? 'bg-secondary text-on-secondary border-secondary' : 'bg-surface-container-lowest text-on-surface-variant border-outline-variant hover:border-secondary hover:text-secondary'"
+                class="px-4 py-2 rounded-full border font-label-sm text-label-sm transition-colors">{{ $label }}</button>
+        @endforeach
+    </div>
+
+    <div class="bg-surface-container-lowest rounded-xl border border-outline-variant shadow-sm overflow-hidden flex-1">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse min-w-[800px]">
+                <thead class="bg-surface-container-low border-b border-outline-variant sticky top-0 z-10">
+                    <tr>
+                        <th class="px-4 py-3 font-label-sm text-label-sm text-on-surface-variant font-semibold">No Pesanan</th>
+                        <th class="px-4 py-3 font-label-sm text-label-sm text-on-surface-variant font-semibold">Meja</th>
+                        <th class="px-4 py-3 font-label-sm text-label-sm text-on-surface-variant font-semibold w-64">Item</th>
+                        <th class="px-4 py-3 font-label-sm text-label-sm text-on-surface-variant font-semibold">Total</th>
+                        <th class="px-4 py-3 font-label-sm text-label-sm text-on-surface-variant font-semibold">Pembayaran</th>
+                        <th class="px-4 py-3 font-label-sm text-label-sm text-on-surface-variant font-semibold">Status</th>
+                        <th class="px-4 py-3 font-label-sm text-label-sm text-on-surface-variant font-semibold">Waktu</th>
+                        <th class="px-4 py-3 font-label-sm text-label-sm text-on-surface-variant font-semibold text-right">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-outline-variant font-body-md text-body-md">
+                    @forelse ($orders as $order)
+                    @php
+                        $group = $order->status === 'pending' ? 'pending' : ($order->status === 'confirmed' || $order->status === 'preparing' ? 'proses' : $order->status);
+                        $items = $order->orderItems->map(fn ($i) => $i->quantity . 'x ' . ($i->menuItem->name ?? 'Menu'))->take(2)->implode(', ');
+                    @endphp
+                    <tr x-show="(f === 'all' || f === '{{ $group }}') && (q === '' || '#{{ $order->order_number }}'.toLowerCase().includes(q.toLowerCase()) || '{{ $order->restaurantTable?->label ?? 'Takeaway' }}'.toLowerCase().includes(q.toLowerCase()))"
+                        class="hover:bg-surface-bright transition-colors bg-surface-container-lowest">
+                        <td class="px-4 py-3 font-semibold text-secondary">#{{ $order->order_number }}</td>
+                        <td class="px-4 py-3">{{ $order->restaurantTable?->label ?? 'Takeaway' }}</td>
+                        <td class="px-4 py-3 text-on-surface-variant line-clamp-1">{{ $items }}</td>
+                        <td class="px-4 py-3 font-medium">Rp{{ number_format($order->total, 0, ',', '.') }}</td>
+                        <td class="px-4 py-3"><span class="flex items-center gap-1 text-on-surface-variant"><span class="material-symbols-outlined text-[16px]">{{ $order->payment_method === 'cash' ? 'payments' : 'credit_card' }}</span> {{ $payLabel[$order->payment_method] ?? ucfirst($order->payment_method) }}</span></td>
+                        <td class="px-4 py-3">
+                            @if ($order->payment_status === 'paid')
+                            <span class="inline-flex items-center px-2 py-1 rounded bg-secondary/20 text-secondary font-label-sm text-label-sm whitespace-nowrap">LUNAS</span>
+                            @else
+                            <span class="inline-flex items-center px-2 py-1 rounded bg-[#FDE68A] text-[#92400E] font-label-sm text-label-sm whitespace-nowrap">Menunggu Pembayaran</span>
+                            @endif
+                        </td>
+                        <td class="px-4 py-3"><span class="inline-flex items-center px-2 py-1 rounded-full {{ $statusClass[$order->status] ?? 'bg-surface-container-high text-on-surface-variant' }} font-label-sm text-label-sm whitespace-nowrap">{{ $statusLabel[$order->status] ?? $order->status }}</span></td>
+                        <td class="px-4 py-3 text-on-surface-variant">{{ $order->created_at->diffForHumans() }}</td>
+                        <td class="px-4 py-3 text-right">
+                            <div class="flex items-center justify-end gap-1">
+                            @if ($order->payment_status === 'unpaid')
+                            <a href="{{ route('kasir.orders.show', $order) }}" class="p-1.5 text-secondary hover:bg-secondary/10 rounded-lg transition-colors inline-flex" title="Konfirmasi Pembayaran">
+                                <span class="material-symbols-outlined">payments</span>
+                            </a>
+                            @endif
+                            <a href="{{ route('kasir.orders.show', $order) }}" class="p-1.5 text-secondary hover:bg-secondary/10 rounded-lg transition-colors inline-flex" title="Detail">
+                                <span class="material-symbols-outlined">visibility</span>
+                            </a>
+                            </div>
+                        </td>
+                    </tr>
+                    @empty
+                    <tr><td colspan="8" class="p-8 text-center text-on-surface-variant">Belum ada pesanan.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
         </div>
-    @else
-        <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead>
-                        <tr class="border-b border-gray-100 bg-gray-50/50">
-                            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Order #</th>
-                            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Table</th>
-                            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Items</th>
-                            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Total</th>
-                            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Status</th>
-                            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Payment</th>
-                            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Date</th>
-                            <th class="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-50">
-                        @foreach ($orders as $order)
-                            <tr class="hover:bg-gray-50/50 transition-colors">
-                                <td class="px-4 py-3 font-medium text-gray-800">#{{ $order->order_number }}</td>
-                                <td class="px-4 py-3 text-gray-500">{{ $order->restaurantTable->table_number ?? '-' }}</td>
-                                <td class="px-4 py-3 text-gray-500">{{ $order->orderItems->count() }}</td>
-                                <td class="px-4 py-3 font-medium text-gray-800">Rp {{ number_format($order->total_amount, 0, ',', '.') }}</td>
-                                <td class="px-4 py-3">
-                                    <span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold
-                                        @if($order->status == 'pending') bg-yellow-100 text-yellow-700
-                                        @elseif($order->status == 'processing') bg-blue-100 text-blue-700
-                                        @elseif($order->status == 'completed') bg-green-100 text-green-700
-                                        @else bg-red-100 text-red-700 @endif
-                                    ">{{ $order->status }}</span>
-                                </td>
-                                <td class="px-4 py-3">
-                                    @if ($order->payment_method)
-                                        <span class="text-xs text-gray-500">{{ $order->payment_method }}</span>
-                                    @else
-                                        <span class="text-xs text-gray-300">—</span>
-                                    @endif
-                                </td>
-                                <td class="px-4 py-3 text-gray-400 text-xs">{{ $order->created_at->format('d M Y H:i') }}</td>
-                                <td class="px-4 py-3 text-right">
-                                    <a href="{{ route('admin.orders.show', $order->id) }}" class="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80">
-                                        Detail <span class="material-symbols-outlined text-sm">chevron_right</span>
-                                    </a>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    @endif
+    </div>
 </div>
 @endsection

@@ -1,60 +1,70 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\CartController;
-use App\Http\Controllers\HomeController;
+use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\MenuController;
 use App\Http\Controllers\OrderController;
-use App\Http\Controllers\ScanController;
-use App\Http\Controllers\Admin\AuthController as AdminAuth;
-use App\Http\Controllers\Admin\CategoryController;
-use App\Http\Controllers\Admin\DashboardController;
-use App\Http\Controllers\Admin\MenuController as AdminMenu;
-use App\Http\Controllers\Admin\OrderController as AdminOrder;
-use App\Http\Controllers\Admin\RestaurantTableController;
-use App\Http\Controllers\Admin\UserController;
-use App\Http\Controllers\Kasir\DashboardController as KasirDashboard;
-use App\Http\Controllers\Kasir\OrderController as KasirOrder;
-use App\Http\Controllers\Kasir\PaymentController as KasirPayment;
 
-// ===== Customer Routes =====
-Route::get('/order/{table:qr_token}', [ScanController::class, 'orderPage'])->name('customer.order');
-Route::post('/customer/session', [ScanController::class, 'initSession'])->name('customer.session');
+// ===== Authentication (internal restoran) =====
+Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
+Route::post('/login', [AuthController::class, 'login'])->name('login.attempt');
 
-Route::get('/', [HomeController::class, 'index'])->name('home');
-Route::get('/menu/{id}', [MenuController::class, 'show'])->name('menu.detail');
-
-Route::post('/cart/add', [CartController::class, 'add'])->middleware('customer.session')->name('cart.add');
-Route::post('/cart/update', [CartController::class, 'update'])->middleware('customer.session')->name('cart.update');
-Route::post('/cart/remove', [CartController::class, 'remove'])->middleware('customer.session')->name('cart.remove');
-Route::get('/checkout', [OrderController::class, 'checkoutPage'])->middleware('customer.session')->name('checkout');
-Route::post('/checkout', [OrderController::class, 'store'])->middleware('customer.session')->name('checkout.store');
-Route::get('/orders', [OrderController::class, 'index'])->middleware('customer.session')->name('customer.orders');
-Route::get('/orders/{order}', [OrderController::class, 'detail'])->middleware('customer.session')->name('customer.order.detail');
-
-// ===== Staff Auth =====
-Route::prefix('/staff')->name('staff.')->group(function () {
-    Route::get('/login', [AdminAuth::class, 'loginForm'])->name('login');
-    Route::post('/login', [AdminAuth::class, 'login'])->name('login.post');
-    Route::post('/logout', [AdminAuth::class, 'logout'])->name('logout');
+// Register publik dihapus — akun hanya dibuat oleh Admin (Manajemen Pengguna).
+Route::middleware('auth')->group(function () {
+    Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 });
 
-// ===== Kasir Dashboard =====
-Route::prefix('/kasir')->name('kasir.')->middleware(['auth', 'role:kasir,owner'])->group(function () {
-    Route::get('/', [KasirDashboard::class, 'index'])->name('dashboard');
-    Route::get('/orders', [KasirOrder::class, 'index'])->name('orders');
-    Route::get('/orders/{order}', [KasirOrder::class, 'show'])->name('orders.show');
-    Route::put('/orders/{order}/status', [KasirOrder::class, 'updateStatus'])->name('orders.update-status');
-    Route::post('/orders/{order}/payment', [KasirPayment::class, 'process'])->name('orders.payment');
+// Dashboard internal restoran
+use App\Http\Controllers\Admin\AdminController;
+use App\Http\Controllers\Admin\KasirController;
+
+Route::middleware(['auth', 'role:kasir'])->group(function () {
+    Route::get('/kasir', [KasirController::class, 'home'])->name('kasir.dashboard');
+    Route::get('/kasir/dashboard/orders-data', [KasirController::class, 'pendingOrdersData'])->name('kasir.dashboard.orders-data');
+    Route::get('/kasir/orders', [KasirController::class, 'orders'])->name('kasir.orders');
+    Route::get('/kasir/orders/{order}', [KasirController::class, 'orderDetail'])->name('kasir.orders.show');
+    Route::patch('/kasir/orders/{order}/status', [KasirController::class, 'updateStatus'])->name('kasir.orders.status');
+    Route::patch('/kasir/orders/{order}/payment/confirm', [KasirController::class, 'confirmPayment'])->name('kasir.payment.confirm');
+    Route::get('/kasir/payments', [KasirController::class, 'payments'])->name('kasir.payments');
+    Route::get('/kasir/notifications', [KasirController::class, 'notifications'])->name('kasir.notifications');
+    Route::get('/kasir/notifications/data', [KasirController::class, 'notificationsData'])->name('kasir.notifications.data');
+    Route::patch('/kasir/notifications/{notification}/read', [KasirController::class, 'notificationsMarkRead'])->name('kasir.notifications.read');
+    Route::post('/kasir/notifications/read-all', [KasirController::class, 'notificationsMarkAllRead'])->name('kasir.notifications.readall');
+    Route::get('/kasir/tables', [KasirController::class, 'tables'])->name('kasir.tables');
+    Route::patch('/kasir/tables/{table}/status', [KasirController::class, 'tableStatus'])->name('kasir.tables.status');
+});
+Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/', [AdminController::class, 'home'])->name('dashboard');
+    Route::get('/menu', [AdminController::class, 'menuIndex'])->name('menu');
+    Route::get('/menu/create', [AdminController::class, 'menuCreate'])->name('menu.create');
+    Route::post('/menu', [AdminController::class, 'menuStore'])->name('menu.store');
+    Route::get('/menu/{menu}/edit', [AdminController::class, 'menuEdit'])->name('menu.edit');
+    Route::put('/menu/{menu}', [AdminController::class, 'menuUpdate'])->name('menu.update');
+    Route::delete('/menu/{menu}', [AdminController::class, 'menuDestroy'])->name('menu.destroy');
+    Route::get('/users', [AdminController::class, 'userIndex'])->name('users');
+    Route::post('/users', [AdminController::class, 'userStore'])->name('users.store');
+    Route::patch('/users/{user}', [AdminController::class, 'userUpdate'])->name('users.update');
+    Route::patch('/users/{user}/toggle', [AdminController::class, 'userToggle'])->name('users.toggle');
+    Route::delete('/users/{user}', [AdminController::class, 'userDestroy'])->name('users.destroy');
+    Route::get('/tables', [AdminController::class, 'tableQr'])->name('tables');
+    Route::post('/tables', [AdminController::class, 'tableStore'])->name('tables.store');
+    Route::get('/tables/{table}/qr', [AdminController::class, 'tableQrDownload'])->name('tables.qr');
+    Route::delete('/tables/{table}', [AdminController::class, 'tableDestroy'])->name('tables.destroy');
 });
 
-// ===== Owner Dashboard =====
-Route::prefix('/admin')->name('admin.')->middleware(['auth', 'role:owner'])->group(function () {
-    Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
-    Route::resource('categories', CategoryController::class);
-    Route::resource('menus', AdminMenu::class);
-    Route::resource('tables', RestaurantTableController::class);
-    Route::get('/orders', [AdminOrder::class, 'index'])->name('orders.index');
-    Route::get('/orders/{order}', [AdminOrder::class, 'show'])->name('orders.show');
-    Route::resource('staff', UserController::class)->parameters(['staff' => 'user']);
+Route::get('/', function () {
+    $table = App\Models\RestaurantTable::query()->orderBy('id')->first();
+    return $table ? redirect()->route('menu', $table->qr_token) : response('Tidak ada meja tersedia', 404);
 });
+
+Route::get('/menu', [MenuController::class, 'tableEntry'])->name('menu.entry');
+Route::get('/qr-test', [MenuController::class, 'qrTest'])->name('menu.qr-test');
+
+Route::get('/order/{table:qr_token}', [MenuController::class, 'index'])->name('menu')->middleware(App\Http\Middleware\EnsureCustomerSession::class);
+Route::post('/order/{table:qr_token}/payment', [OrderController::class, 'payment'])->name('order.payment')->middleware(App\Http\Middleware\EnsureCustomerSession::class);
+Route::get('/order/{table:qr_token}/payment', [OrderController::class, 'paymentSelect'])->name('order.payment.select')->middleware(App\Http\Middleware\EnsureCustomerSession::class);
+Route::get('/order/{table:qr_token}/payment/qris', [OrderController::class, 'qris'])->name('order.payment.qris')->middleware(App\Http\Middleware\EnsureCustomerSession::class);
+Route::get('/order/{table:qr_token}/payment/cash', [OrderController::class, 'cash'])->name('order.payment.cash')->middleware(App\Http\Middleware\EnsureCustomerSession::class);
+Route::post('/order/{table:qr_token}/confirm', [OrderController::class, 'confirm'])->name('order.confirm')->middleware(App\Http\Middleware\EnsureCustomerSession::class);
+Route::get('/order/{table:qr_token}/status/{order}', [OrderController::class, 'status'])->name('order.status')->middleware(App\Http\Middleware\EnsureCustomerSession::class);
+Route::get('/order/{table:qr_token}/status/{order}/poll', [OrderController::class, 'pollStatus'])->name('order.poll')->middleware(App\Http\Middleware\EnsureCustomerSession::class);

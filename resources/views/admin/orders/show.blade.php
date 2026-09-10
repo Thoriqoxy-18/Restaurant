@@ -1,99 +1,199 @@
 @extends('admin.layouts.app')
-@section('title', 'Order #' . $order->order_number . ' - ' . config('app.name'))
+@section('title', 'Detail Pesanan - Verdant Bistro')
+
 @section('content')
-<div class="max-w-4xl mx-auto space-y-6">
-    <div class="flex items-center justify-between">
+@php
+    $statusLabel = ['pending' => 'Menunggu', 'confirmed' => 'Diterima', 'preparing' => 'Diproses', 'served' => 'Siap Diambil', 'completed' => 'Selesai', 'cancelled' => 'Dibatalkan'];
+    $payLabel = ['qris' => 'QRIS', 'cash' => 'Tunai'];
+    $paymentLabel = ['paid' => 'LUNAS', 'unpaid' => 'Menunggu Pembayaran', 'waiting_verification' => 'Menunggu Verifikasi', 'failed' => 'Gagal'];
+    $optionType = ['variation' => 'Varian', 'topping' => 'Topping', 'sauce' => 'Saus'];
+@endphp
+
+<div class="max-w-container-max mx-auto p-margin-mobile md:p-margin-desktop space-y-8" x-data="{ confirmOpen: false, completeOpen: false }">
+    <div class="flex items-center gap-4 border-b border-outline-variant pb-6">
+        <a href="{{ route('kasir.orders') }}" class="p-2 bg-surface-container-lowest rounded-full hover:bg-surface-container border border-outline-variant transition-colors flex items-center justify-center">
+            <span class="material-symbols-outlined">arrow_back</span>
+        </a>
         <div>
-            <a href="{{ route('admin.orders.index') }}" class="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-1">
-                <span class="material-symbols-outlined text-base">arrow_back</span> Back to Orders
-            </a>
-            <h2 class="text-xl font-bold text-gray-800">Order #{{ $order->order_number }}</h2>
-            <p class="text-sm text-gray-500">Table {{ $order->restaurantTable->table_number ?? '-' }} &middot; {{ $order->created_at->format('d M Y H:i') }}</p>
+            <h1 class="font-headline-lg text-headline-lg text-on-surface">Detail Pesanan #{{ $order->order_number }}</h1>
+            <p class="font-body-md text-body-md text-on-surface-variant mt-1">{{ $order->restaurantTable?->label ?? 'Takeaway' }} • {{ $statusLabel[$order->status] ?? $order->status }}</p>
         </div>
-        <span class="px-3 py-1 rounded-full text-xs font-semibold
-            @if($order->status == 'pending') bg-yellow-100 text-yellow-700
-            @elseif($order->status == 'processing') bg-blue-100 text-blue-700
-            @elseif($order->status == 'completed') bg-green-100 text-green-700
-            @else bg-red-100 text-red-700 @endif
-        ">{{ $order->status }}</span>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div class="lg:col-span-2 space-y-6">
-            <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-                <h3 class="text-sm font-semibold text-gray-800 mb-4">Order Items</h3>
-                <div class="divide-y divide-gray-50">
-                    @foreach ($order->orderItems as $item)
-                        <div class="flex gap-3 py-3 first:pt-0 last:pb-0">
-                            <div class="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-gradient-to-br from-primary/5 to-secondary/5">
-                                <img src="{{ $item->menuItem && $item->menuItem->image ? asset($item->menuItem->image) : asset('assets/images/default/no-image.svg') }}" alt="" class="w-full h-full object-cover" loading="lazy">
+            <div class="bg-surface-container-lowest rounded-xl border border-outline-variant p-6 shadow-sm">
+                <h2 class="font-headline-md text-headline-md text-on-surface mb-6 border-b border-outline-variant pb-4">Daftar Item</h2>
+                <div class="space-y-4">
+                    @foreach ($order->orderItems as $oi)
+                    <div class="flex justify-between items-start p-4 bg-surface rounded-lg border border-outline-variant">
+                        <div class="flex gap-4 min-w-0">
+                            <div class="w-16 h-16 bg-surface-container rounded flex items-center justify-center text-primary shrink-0">
+                                <span class="material-symbols-outlined text-3xl">restaurant</span>
                             </div>
-                            <div class="flex-1 min-w-0">
-                                <div class="flex justify-between items-start">
-                                    <p class="text-sm font-medium text-gray-800">{{ $item->menuItem->name ?? 'Menu' }}</p>
-                                    <p class="text-sm font-medium text-gray-800">Rp {{ number_format($item->unit_price, 0, ',', '.') }}</p>
-                                </div>
-                                <p class="text-xs text-gray-400">Qty: {{ $item->quantity }} @if($item->notes) &middot; {{ $item->notes }} @endif</p>
+                            <div class="min-w-0">
+                                <h3 class="font-headline-md text-headline-md text-on-surface text-base">{{ $oi->menuItem->name ?? 'Menu' }}</h3>
+                                <ul class="font-body-md text-body-md text-on-surface-variant text-sm mt-1">
+                                    @foreach ($oi->options as $opt)
+                                    <li>{{ $optionType[$opt->type] ?? $opt->type }}: {{ $opt->name }}</li>
+                                    @endforeach
+                                    @if ($oi->notes)
+                                    <li class="italic">Catatan: {{ $oi->notes }}</li>
+                                    @endif
+                                </ul>
                             </div>
                         </div>
+                        <div class="text-right shrink-0">
+                            <p class="font-headline-md text-headline-md text-on-surface text-base">Rp{{ number_format($oi->price, 0, ',', '.') }}</p>
+                            <p class="font-body-md text-body-md text-on-surface-variant text-sm mt-1">Qty: {{ $oi->quantity }} × Rp{{ number_format($oi->price, 0, ',', '.') }}</p>
+                        </div>
+                    </div>
                     @endforeach
                 </div>
-            </section>
-
-            @if ($order->notes)
-            <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-                <h3 class="text-sm font-semibold text-gray-800 mb-2">Order Notes</h3>
-                <p class="text-sm text-gray-600">{{ $order->notes }}</p>
-            </section>
-            @endif
+            </div>
         </div>
 
-        <div class="space-y-4">
-            <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-                <h3 class="text-sm font-semibold text-gray-800 mb-4">Payment Summary</h3>
-                <div class="space-y-2 text-sm">
-                    <div class="flex justify-between text-gray-500"><span>Subtotal</span><span>Rp {{ number_format($order->subtotal, 0, ',', '.') }}</span></div>
-                    <div class="flex justify-between text-gray-500"><span>Service &amp; Tax</span><span>Rp {{ number_format($order->service_fee + $order->tax, 0, ',', '.') }}</span></div>
-                    <div class="pt-3 mt-3 border-t border-gray-100 flex justify-between font-semibold text-gray-800"><span>Total</span><span>Rp {{ number_format($order->total_amount, 0, ',', '.') }}</span></div>
-                    @if ($order->payment_method)
-                        <div class="pt-2 text-xs text-gray-400">Paid via {{ $order->payment_method }}</div>
+        <div class="space-y-6">
+            <div class="bg-surface-container-lowest rounded-xl border border-outline-variant p-6 shadow-sm">
+                <h2 class="font-headline-md text-headline-md text-on-surface mb-6 border-b border-outline-variant pb-4">Ringkasan Pembayaran</h2>
+                <div class="space-y-3 mb-6">
+                    <div class="flex justify-between"><span class="font-body-md text-body-md text-on-surface-variant">Subtotal</span><span class="font-body-md text-body-md text-on-surface">Rp{{ number_format($order->subtotal, 0, ',', '.') }}</span></div>
+                    <div class="flex justify-between"><span class="font-body-md text-body-md text-on-surface-variant">Pajak & Service (10%)</span><span class="font-body-md text-body-md text-on-surface">Rp{{ number_format($order->tax + $order->service_charge, 0, ',', '.') }}</span></div>
+                    <div class="pt-3 border-t border-outline-variant flex justify-between"><span class="font-headline-md text-headline-md text-on-surface text-base">Total</span><span class="font-headline-md text-headline-md text-primary text-base">Rp{{ number_format($order->total, 0, ',', '.') }}</span></div>
+                </div>
+                <div class="bg-surface p-4 rounded-lg border border-outline-variant space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="font-label-sm text-label-sm text-on-surface-variant">Metode Pembayaran</span>
+                        <span class="font-label-sm text-label-sm text-on-surface bg-surface-container-highest px-2 py-1 rounded">{{ $payLabel[$order->payment_method] ?? ucfirst($order->payment_method) }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="font-label-sm text-label-sm text-on-surface-variant">Status</span>
+                        <span class="font-label-sm text-label-sm px-2 py-1 rounded font-semibold {{ $order->payment_status === 'paid' ? 'bg-secondary/20 text-secondary' : 'bg-[#FDE68A] text-[#92400E]' }}">
+                            <span class="material-symbols-outlined text-[14px]">{{ $order->payment_status === 'paid' ? 'check_circle' : 'schedule' }}</span> {{ $paymentLabel[$order->payment_status] ?? ucfirst($order->payment_status) }}
+                        </span>
+                    </div>
+                    @if ($order->payment_status === 'paid' && $order->paid_at)
+                    <div class="flex justify-between items-center">
+                        <span class="font-label-sm text-label-sm text-on-surface-variant">Dibayar</span>
+                        <span class="font-label-sm text-label-sm text-on-surface">{{ $order->paid_at->setTimezone('Asia/Jakarta')->format('d M Y, H:i') }}</span>
+                    </div>
+                    @endif
+                    @if ($order->payment_provider)
+                    <div class="flex justify-between items-center">
+                        <span class="font-label-sm text-label-sm text-on-surface-variant">Aplikasi</span>
+                        <span class="font-label-sm text-label-sm text-on-surface">{{ ucfirst($order->payment_provider) }}</span>
+                    </div>
                     @endif
                 </div>
-            </section>
 
-            <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-                <h3 class="text-sm font-semibold text-gray-800 mb-4">Update Status</h3>
-                <form method="POST" action="{{ route('admin.orders.update-status', $order->id) }}" class="space-y-2">
-                    @csrf @method('PATCH')
-                    <select name="status" class="w-full h-10 rounded-xl border border-gray-200 text-sm px-3 focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none">
-                        <option value="pending" {{ $order->status == 'pending' ? 'selected' : '' }}>Pending</option>
-                        <option value="processing" {{ $order->status == 'processing' ? 'selected' : '' }}>Processing</option>
-                        <option value="completed" {{ $order->status == 'completed' ? 'selected' : '' }}>Completed</option>
-                        <option value="cancelled" {{ $order->status == 'cancelled' ? 'selected' : '' }}>Cancelled</option>
-                    </select>
-                    <button type="submit" class="w-full h-10 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm">Update Status</button>
-                </form>
-            </section>
+                @if ($order->payment_status === 'unpaid')
+                <button type="button" @click="confirmOpen = true"
+                        class="mt-4 w-full bg-secondary text-on-secondary font-label-sm text-label-sm py-3 rounded-lg hover:bg-opacity-90 transition-opacity flex items-center justify-center gap-2">
+                    <span class="material-symbols-outlined">payments</span>
+                    {{ $order->payment_method === 'cash' ? 'Konfirmasi Pembayaran Tunai' : 'Konfirmasi Pembayaran (Simulasi)' }}
+                </button>
+                @endif
+            </div>
 
-            @if ($order->status == 'completed' && !$order->payment_method)
-            <section class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-                <h3 class="text-sm font-semibold text-gray-800 mb-4">Process Payment</h3>
-                <form method="POST" action="{{ route('admin.orders.payment', $order->id) }}" class="space-y-3">
-                    @csrf @method('PATCH')
-                    <div>
-                        <label class="block text-xs font-medium text-gray-500 mb-1">Payment Method</label>
-                        <select name="payment_method" class="w-full h-10 rounded-xl border border-gray-200 text-sm px-3 focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none">
-                            <option value="cash">Cash</option>
-                            <option value="qris">QRIS</option>
-                            <option value="debit">Debit Card</option>
-                        </select>
-                    </div>
-                    <button type="submit" class="w-full h-10 rounded-xl bg-green-500 text-white text-sm font-semibold hover:bg-green-600 transition-colors flex items-center justify-center gap-1 shadow-sm">
-                        <span class="material-symbols-outlined text-sm">payments</span> Confirm Payment
+            <div class="bg-surface-container-lowest rounded-xl border border-outline-variant p-6 shadow-sm space-y-3">
+                @if ($order->status === 'pending')
+                <form method="POST" action="{{ route('kasir.orders.status', $order) }}">
+                    @csrf
+                    @method('PATCH')
+                    <input type="hidden" name="status" value="confirmed">
+                    <button type="submit" class="w-full bg-secondary text-on-secondary font-label-sm text-label-sm py-3 rounded-lg hover:bg-opacity-90 transition-opacity flex items-center justify-center gap-2">
+                        <span class="material-symbols-outlined">check_circle</span> Terima Pesanan
                     </button>
                 </form>
-            </section>
-            @endif
+                @endif
+                @if ($order->status === 'confirmed')
+                <form method="POST" action="{{ route('kasir.orders.status', $order) }}">
+                    @csrf
+                    @method('PATCH')
+                    <input type="hidden" name="status" value="preparing">
+                    <button type="submit" class="w-full bg-secondary text-on-secondary font-label-sm text-label-sm py-3 rounded-lg hover:bg-opacity-90 transition-opacity flex items-center justify-center gap-2">
+                        <span class="material-symbols-outlined">local_dining</span> Mulai Diproses
+                    </button>
+                </form>
+                @endif
+                @if ($order->status === 'preparing')
+                <form method="POST" action="{{ route('kasir.orders.status', $order) }}">
+                    @csrf
+                    @method('PATCH')
+                    <input type="hidden" name="status" value="served">
+                    <button type="submit" class="w-full bg-secondary text-on-secondary font-label-sm text-label-sm py-3 rounded-lg hover:bg-opacity-90 transition-opacity flex items-center justify-center gap-2">
+                        <span class="material-symbols-outlined">room_service</span> Siap Diambil
+                    </button>
+                </form>
+                @endif
+                @if ($order->status === 'served')
+                <button type="button" @click="completeOpen = true"
+                        class="w-full bg-secondary text-on-secondary font-label-sm text-label-sm py-3 rounded-lg hover:bg-opacity-90 transition-opacity flex items-center justify-center gap-2">
+                    <span class="material-symbols-outlined">check_circle</span> Selesaikan Pesanan
+                </button>
+                @endif
+                @if (! in_array($order->status, ['completed', 'cancelled']))
+                <form method="POST" action="{{ route('kasir.orders.status', $order) }}" onsubmit="return confirm('Batalkan pesanan ini?')">
+                    @csrf
+                    @method('PATCH')
+                    <input type="hidden" name="status" value="cancelled">
+                    <button type="submit" class="w-full text-error font-label-sm text-label-sm py-3 rounded-lg hover:bg-error-container hover:text-on-error-container transition-colors mt-2">Batalkan Pesanan</button>
+                </form>
+                @endif
+            </div>
+        </div>
+    </div>
+
+    {{-- Modal Selesaikan Pesanan --}}
+    <div class="fixed inset-0 z-50 items-center justify-center bg-black/40 backdrop-blur-sm" :class="completeOpen ? 'flex' : 'hidden'">
+        <div class="bg-white dark:bg-inverse-surface rounded-xl shadow-xl border border-outline-variant w-full max-w-md mx-4 p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 rounded-full bg-secondary/15 text-secondary flex items-center justify-center shrink-0"><span class="material-symbols-outlined">check_circle</span></div>
+                <div>
+                    <h3 class="font-headline-md text-headline-md text-on-surface">Pesanan selesai?</h3>
+                    <p class="font-label-sm text-label-sm text-on-surface-variant mt-0.5">Order #{{ $order->order_number }}</p>
+                </div>
+            </div>
+            <p class="font-body-md text-body-md text-on-surface-variant mb-6">Pastikan customer sudah menerima pesanannya sebelum menyelesaikan pesanan.</p>
+            <div class="flex justify-end gap-3">
+                <button type="button" @click="completeOpen = false" class="px-4 py-2 border border-outline-variant text-on-surface-variant rounded-lg font-label-sm text-label-sm hover:bg-surface-container transition-colors">Batal</button>
+                <form method="POST" action="{{ route('kasir.orders.status', $order) }}">
+                    @csrf
+                    @method('PATCH')
+                    <input type="hidden" name="status" value="completed">
+                    <button type="submit" class="px-5 py-2 bg-secondary text-on-secondary rounded-lg font-label-sm text-label-sm font-semibold hover:bg-opacity-90 transition-colors">Selesaikan Pesanan</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    {{-- Modal Konfirmasi Pembayaran --}}
+    <div class="fixed inset-0 z-50 items-center justify-center bg-black/40 backdrop-blur-sm" :class="confirmOpen ? 'flex' : 'hidden'">
+        <div class="bg-white dark:bg-inverse-surface rounded-xl shadow-xl border border-outline-variant w-full max-w-md mx-4 p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 rounded-full bg-secondary/15 text-secondary flex items-center justify-center shrink-0"><span class="material-symbols-outlined">payments</span></div>
+                <div>
+                    <h3 class="font-headline-md text-headline-md text-on-surface">Konfirmasi Pembayaran</h3>
+                    <p class="font-label-sm text-label-sm text-on-surface-variant mt-0.5">Order #{{ $order->order_number }}</p>
+                </div>
+            </div>
+            <p class="font-body-md text-body-md text-on-surface-variant mb-1">
+                @if ($order->payment_method === 'cash')
+                    Pastikan uang tunai sebesar <strong class="text-on-surface">Rp{{ number_format($order->total, 0, ',', '.') }}</strong> sudah diterima dari customer.
+                @else
+                    Simulasi: konfirmasi pembayaran <strong class="text-on-surface">QRIS</strong> untuk kebutuhan testing/demo. Sistem tidak memverifikasi pembayaran sungguhan.
+                @endif
+            </p>
+            <p class="font-body-md text-body-md text-on-surface-variant mb-6">Klik "Ya, Pembayaran Diterima" untuk menandai pembayaran sebagai <strong class="text-secondary">LUNAS</strong>.</p>
+
+            <div class="flex justify-end gap-3">
+                <button type="button" @click="confirmOpen = false" class="px-4 py-2 border border-outline-variant text-on-surface-variant rounded-lg font-label-sm text-label-sm hover:bg-surface-container transition-colors">Batal</button>
+                <form method="POST" action="{{ route('kasir.payment.confirm', $order) }}">
+                    @csrf
+                    @method('PATCH')
+                    <button type="submit" class="px-5 py-2 bg-secondary text-on-secondary rounded-lg font-label-sm text-label-sm font-semibold hover:bg-opacity-90 transition-colors">Ya, Pembayaran Diterima</button>
+                </form>
+            </div>
         </div>
     </div>
 </div>

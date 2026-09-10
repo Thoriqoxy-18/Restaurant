@@ -14,5 +14,8 @@ class Category extends Model
         return ['sort_order' => 'integer'];
     }
 
-    public function menuItems(): HasMany { return $this->hasMany(MenuItem::class); }
+    public function menuItems(): HasMany
+    {
+        return $this->hasMany(MenuItem::class);
+    }
 }
