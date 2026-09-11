@@ -4,8 +4,6 @@ use App\Models\Category;
 use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\RestaurantTable;
-use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class MenuController extends Controller
@@ -48,28 +46,13 @@ class MenuController extends Controller
     }
 
     /**
-     * Entry dari QR meja: /menu?table=1
+     * Halaman demo QR meja — HANYA untuk environment local/testing.
+     * Di production endpoint ini 404 agar token meja tidak ter-expose.
      */
-    public function tableEntry(Request $request): View|RedirectResponse
-    {
-        $tableId = $request->input('table');
-
-        if ($tableId === null || $tableId === '') {
-            return view('customer.table-status', ['message' => 'Nomor meja belum dipilih.']);
-        }
-
-        $table = RestaurantTable::query()->find($tableId);
-        if (!$table) {
-            return view('customer.table-status', ['message' => 'Meja tidak ditemukan.']);
-        }
-
-        session(['table_id' => $table->id]);
-
-        return redirect()->route('menu', $table);
-    }
-
     public function qrTest(): View
     {
+        abort_unless(app()->environment('local', 'testing'), 404);
+
         $tables = RestaurantTable::query()->orderBy('table_number')->get();
 
         return view('customer.table-qr', compact('tables'));

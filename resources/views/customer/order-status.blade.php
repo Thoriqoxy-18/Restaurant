@@ -10,7 +10,7 @@
     <div class="px-3 py-1 rounded-full bg-secondary-container text-on-secondary-container font-label-md text-label-md text-xs">TABLE {{ $order->restaurantTable->code ?? $table->code }}</div>
 </header>
 
-<main class="pt-20 pb-28 px-4 md:px-16 max-w-2xl mx-auto">
+<main class="pt-20 pb-28 px-4 md:px-16 max-w-2xl mx-auto" x-data="{ helpOpen: false }">
     {{-- Notifikasi status pesanan (live, compact, di bawah header) --}}
     <div id="order-banner" x-data x-show="$store.orderBanner.visible" x-cloak class="mb-4"
          x-transition:enter="transition-all duration-300 ease-out"
@@ -227,11 +227,29 @@
             <span class="material-symbols-outlined text-lg">arrow_back</span>
             Kembali ke Menu
         </a>
-        <button class="flex-1 py-4 rounded-2xl bg-secondary-container text-on-secondary-container font-label-md text-label-md hover:bg-secondary-container/80 active:scale-95 transition-all flex items-center justify-center gap-2">
+        <button type="button" @click="helpOpen = true" class="flex-1 py-4 rounded-2xl bg-secondary-container text-on-secondary-container font-label-md text-label-md hover:bg-secondary-container/80 active:scale-95 transition-all flex items-center justify-center gap-2">
             <span class="material-symbols-outlined text-lg">help_outline</span>
             Butuh Bantuan?
         </button>
     </div>
+{{-- Modal Butuh Bantuan (di dalam scope x-data main) --}}
+<div x-show="helpOpen" x-cloak class="fixed inset-0 z-[1100] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4" @click.self="helpOpen = false">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" x-transition:enter="transition-all duration-200 ease-out" x-transition:enter-start="opacity-0 translate-y-3" x-transition:enter-end="opacity-100 translate-y-0">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center shrink-0">
+                <span class="material-symbols-outlined">support_agent</span>
+            </div>
+            <div>
+                <h3 class="font-headline-md text-headline-md text-on-surface">Butuh Bantuan?</h3>
+                <p class="text-xs text-on-surface-variant mt-0.5">Verdant Bistro</p>
+            </div>
+        </div>
+        <p class="font-body-md text-body-md text-on-surface-variant mb-6">Silakan hubungi pelayan atau kasir di meja. Kami dengan senang hati membantu Anda.</p>
+        <div class="flex justify-end">
+            <button type="button" @click="helpOpen = false" class="px-4 py-2 rounded-lg bg-secondary-container text-on-secondary-container font-label-sm text-label-sm hover:bg-secondary-container/80 transition-colors">Mengerti</button>
+        </div>
+    </div>
+</div>
 </main>
 
 @push('styles')

@@ -54,7 +54,7 @@
             {{-- Search --}}
             <div class="relative">
                 <svg class="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-outline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-                <input type="text" x-model="search" class="w-full h-12 pl-11 pr-4 rounded-2xl border border-outline-variant/30 bg-white focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none text-sm transition-all" placeholder="Cari menu...">
+                <input type="text" x-model="search" aria-label="Cari menu" class="w-full h-12 pl-11 pr-4 rounded-2xl border border-outline-variant/30 bg-white focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none text-sm transition-all" placeholder="Cari menu...">
             </div>
 
             {{-- Categories --}}
@@ -90,7 +90,7 @@
                     if ($isNew && count($badges) < 2) $badges[] = ['text' => 'New', 'class' => 'bg-blue-500 text-white'];
                 @endphp
                 <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col group cursor-pointer lg:hover:shadow-md lg:hover:-translate-y-0.5 transition-all duration-200 menu-card"
-                     @click="if (!$event.target.closest('button')) $dispatch('open-detail', { id: {{ $item->id }}, name: '{{ $item->name }}', price: {{ $item->price }}, oldPrice: {{ $item->old_price ?? 'null' }}, image: '{{ $item->image_path ? asset($item->image_path) : asset('assets/images/default/no-image.svg') }}', desc: @js($item->description), prepTime: {{ $item->prep_time_minutes }}, vegan: {{ $item->is_vegan ? 'true' : 'false' }}, hasSpice: {{ $item->has_spice_level ? 'true' : 'false' }}, rating: '{{ $item->rating }}', variations: @js($item->variations), toppings: @js($item->toppings), sauces: @js($item->sauces) })"
+                     @click="if (!$event.target.closest('button')) $dispatch('open-detail', { id: {{ $item->id }}, name: @js($item->name), price: {{ $item->price }}, oldPrice: {{ $item->old_price ?? 'null' }}, image: @js($item->image_path ? asset($item->image_path) : asset('assets/images/default/no-image.svg')), desc: @js($item->description), prepTime: {{ $item->prep_time_minutes }}, vegan: {{ $item->is_vegan ? 'true' : 'false' }}, hasSpice: {{ $item->has_spice_level ? 'true' : 'false' }}, rating: @js((string) $item->rating), variations: @js($item->variations), toppings: @js($item->toppings), sauces: @js($item->sauces) })"
                      x-show="activeCat === 'all' || activeCat === '{{ $item->category->slug }}'">
                     <div class="relative aspect-[4/3] bg-gray-50 overflow-hidden">
                         <img src="{{ $item->image_path ? asset($item->image_path) : asset('assets/images/default/no-image.svg') }}" alt="{{ $item->name }}" class="w-full h-full object-cover lg:group-hover:scale-105 transition-transform duration-500" loading="lazy" onerror="this.src='{{ asset('assets/images/default/no-image.svg') }}'">
@@ -335,7 +335,7 @@
 
                 <div>
                     <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Catatan</h3>
-                    <textarea x-model="note" class="w-full bg-gray-50 border-0 rounded-xl px-4 py-3 text-sm text-gray-700 placeholder:text-gray-300 focus:ring-2 focus:ring-primary/20 resize-none h-20" placeholder="Ada permintaan khusus?"></textarea>
+                    <textarea x-model="note" aria-label="Catatan untuk menu ini" class="w-full bg-gray-50 border-0 rounded-xl px-4 py-3 text-sm text-gray-700 placeholder:text-gray-300 focus:ring-2 focus:ring-primary/20 resize-none h-20" placeholder="Ada permintaan khusus?"></textarea>
                 </div>
             </div>
         </div>

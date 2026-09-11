@@ -76,7 +76,7 @@
                 <div id="notif-list" class="max-h-80 overflow-y-auto divide-y divide-outline-variant/50"></div>
             </div>
         </div>
-        <button class="p-2 hover:bg-surface-container dark:hover:bg-surface-container-high rounded-full transition-all">
+        <button type="button" title="Fitur jadwal segera hadir" aria-label="Jadwal (segera hadir)" class="p-2 opacity-50 cursor-not-allowed rounded-full" disabled>
             <span class="material-symbols-outlined">schedule</span>
         </button>
     </div>
@@ -128,6 +128,12 @@
         const readAll = document.getElementById('notif-read-all');
         if (!btn) return;
 
+        function esc(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+
         function render(items) {
             list.innerHTML = '';
             if (!items.length) {
@@ -140,9 +146,9 @@
                 a.className = 'block px-4 py-3 hover:bg-surface-container-low transition-colors' + (n.read ? ' opacity-60' : ' bg-surface-bright');
                 a.innerHTML = '<div class="flex items-start gap-2">'
                     + '<span class="mt-0.5 shrink-0">' + (n.type === 'payment' ? '💳' : '🔔') + '</span>'
-                    + '<div class="min-w-0 flex-1"><p class="font-label-sm text-label-sm font-semibold text-on-surface">' + n.title + '</p>'
-                    + '<p class="text-xs text-on-surface-variant mt-0.5 break-words">' + n.message + '</p>'
-                    + '<p class="text-[10px] text-outline mt-0.5">' + n.time + '</p></div>'
+                    + '<div class="min-w-0 flex-1"><p class="font-label-sm text-label-sm font-semibold text-on-surface">' + esc(n.title) + '</p>'
+                    + '<p class="text-xs text-on-surface-variant mt-0.5 break-words">' + esc(n.message) + '</p>'
+                    + '<p class="text-[10px] text-outline mt-0.5">' + esc(n.time) + '</p></div>'
                     + (n.read ? '' : '<span class="w-2 h-2 rounded-full bg-error mt-1 shrink-0"></span>')
                     + '</div>';
                 if (!n.read) {

@@ -8,24 +8,26 @@
     $payLabel = ['qris' => 'QRIS', 'cash' => 'Tunai'];
 @endphp
 
-<div class="max-w-container-max mx-auto p-margin-mobile md:p-margin-desktop flex flex-col gap-6" x-data="{ q: '', f: 'all' }">
+<div class="max-w-container-max mx-auto p-margin-mobile md:p-margin-desktop flex flex-col gap-6">
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
             <h2 class="font-headline-lg text-headline-lg text-on-background">Manajemen Pesanan</h2>
             <p class="font-body-md text-body-md text-on-surface-variant mt-1">Pantau dan kelola semua pesanan aktif restoran.</p>
         </div>
-        <div class="relative w-full md:w-64">
+        <form method="GET" action="{{ route('kasir.orders') }}" class="relative w-full md:w-64">
             <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
-            <input x-model="q" class="w-full pl-10 pr-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md text-body-md text-on-surface focus:border-secondary focus:ring-2 focus:ring-secondary/20 transition-all outline-none" placeholder="Cari nomor pesanan atau meja..." type="text"/>
-        </div>
+            <input name="q" value="{{ $q }}" aria-label="Cari nomor pesanan atau meja" class="w-full pl-10 pr-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md text-body-md text-on-surface focus:border-secondary focus:ring-2 focus:ring-secondary/20 transition-all outline-none" placeholder="Cari nomor pesanan atau meja..." type="text"/>
+            @if ($f !== 'all')<input type="hidden" name="f" value="{{ $f }}"/>@endif
+        </form>
     </div>
 
     <div class="flex flex-wrap gap-2 pb-2">
-        @foreach ([
-            'all' => 'Semua', 'pending' => 'Baru', 'proses' => 'Diproses', 'served' => 'Siap Disajikan', 'completed' => 'Selesai', 'cancelled' => 'Dibatalkan'
-        ] as $key => $label)
-        <button @click="f = '{{ $key }}'" :class="f === '{{ $key }}' ? 'bg-secondary text-on-secondary border-secondary' : 'bg-surface-container-lowest text-on-surface-variant border-outline-variant hover:border-secondary hover:text-secondary'"
-                class="px-4 py-2 rounded-full border font-label-sm text-label-sm transition-colors">{{ $label }}</button>
+        @php
+            $filters = ['all' => 'Semua', 'pending' => 'Baru', 'proses' => 'Diproses', 'served' => 'Siap Disajikan', 'completed' => 'Selesai', 'cancelled' => 'Dibatalkan'];
+        @endphp
+        @foreach ($filters as $key => $label)
+        <a href="{{ route('kasir.orders', ['f' => $key, 'q' => $q]) }}"
+           class="px-4 py-2 rounded-full border font-label-sm text-label-sm transition-colors {{ $f === $key ? 'bg-secondary text-on-secondary border-secondary' : 'bg-surface-container-lowest text-on-surface-variant border-outline-variant hover:border-secondary hover:text-secondary' }}">{{ $label }}</a>
         @endforeach
     </div>
 
@@ -47,11 +49,9 @@
                 <tbody class="divide-y divide-outline-variant font-body-md text-body-md">
                     @forelse ($orders as $order)
                     @php
-                        $group = $order->status === 'pending' ? 'pending' : ($order->status === 'confirmed' || $order->status === 'preparing' ? 'proses' : $order->status);
                         $items = $order->orderItems->map(fn ($i) => $i->quantity . 'x ' . ($i->menuItem->name ?? 'Menu'))->take(2)->implode(', ');
                     @endphp
-                    <tr x-show="(f === 'all' || f === '{{ $group }}') && (q === '' || '#{{ $order->order_number }}'.toLowerCase().includes(q.toLowerCase()) || '{{ $order->restaurantTable?->label ?? 'Takeaway' }}'.toLowerCase().includes(q.toLowerCase()))"
-                        class="hover:bg-surface-bright transition-colors bg-surface-container-lowest">
+                    <tr class="hover:bg-surface-bright transition-colors bg-surface-container-lowest">
                         <td class="px-4 py-3 font-semibold text-secondary">#{{ $order->order_number }}</td>
                         <td class="px-4 py-3">{{ $order->restaurantTable?->label ?? 'Takeaway' }}</td>
                         <td class="px-4 py-3 text-on-surface-variant line-clamp-1">{{ $items }}</td>
@@ -84,6 +84,9 @@
                     @endforelse
                 </tbody>
             </table>
+        </div>
+        <div class="p-4 border-t border-outline-variant">
+            {{ $orders->links() }}
         </div>
     </div>
 </div>

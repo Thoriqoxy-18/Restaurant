@@ -14,11 +14,14 @@ class KasirController extends Controller
 {
     public function home(): View
     {
+        $todayStart = today()->startOfDay();
+        $todayEnd = today()->endOfDay();
+
         $stats = [
             'new' => Order::where('status', 'pending')->count(),
             'processing' => Order::whereIn('status', ['confirmed', 'preparing'])->count(),
             'ready' => Order::where('status', 'served')->count(),
-            'revenue' => Order::where('payment_status', 'paid')->whereDate('created_at', today())->sum('total'),
+            'revenue' => Order::where('payment_status', 'paid')->whereBetween('created_at', [$todayStart, $todayEnd])->sum('total'),
         ];
 
         $newOrders = Order::with(['orderItems.menuItem', 'restaurantTable'])
@@ -61,13 +64,34 @@ class KasirController extends Controller
         ]);
     }
 
-    public function orders(): View
+    public function orders(Request $request): View
     {
-        $orders = Order::with(['orderItems.menuItem', 'orderItems.options', 'restaurantTable'])
-            ->latest()
-            ->get();
+        $q = trim((string) $request->query('q'));
+        $f = $request->query('f', 'all');
 
-        return view('admin.orders.index', compact('orders'));
+        $query = Order::with(['orderItems.menuItem', 'orderItems.options', 'restaurantTable'])->latest();
+
+        if ($q !== '') {
+            $query->where(function ($qq) use ($q) {
+                $qq->where('order_number', 'like', '%'.$q.'%')
+                    ->orWhereHas('restaurantTable', fn ($t) => $t->where('name', 'like', '%'.$q.'%'));
+            });
+        }
+
+        $groups = [
+            'pending' => ['pending'],
+            'proses' => ['confirmed', 'preparing'],
+            'served' => ['served'],
+            'completed' => ['completed'],
+            'cancelled' => ['cancelled'],
+        ];
+        if ($f !== 'all' && isset($groups[$f])) {
+            $query->whereIn('status', $groups[$f]);
+        }
+
+        $orders = $query->paginate(20)->withQueryString();
+
+        return view('admin.orders.index', compact('orders', 'q', 'f'));
     }
 
     public function orderDetail(Order $order): View
@@ -84,6 +108,35 @@ class KasirController extends Controller
 
         if (! in_array($status, $allowed, true)) {
             return back()->with('error', 'Status tidak valid.');
+        }
+
+        // State machine transisi status.
+        // pending -> confirmed -> preparing -> served -> completed
+        // cancelled hanya boleh dari pending/confirmed/preparing.
+        $transitions = [
+            'pending' => ['confirmed', 'cancelled'],
+            'confirmed' => ['preparing', 'cancelled'],
+            'preparing' => ['served', 'cancelled'],
+            'served' => ['completed'],
+            'completed' => [],
+            'cancelled' => [],
+        ];
+
+        $statusLabel = [
+            'pending' => 'Menunggu', 'confirmed' => 'Diterima', 'preparing' => 'Diproses',
+            'served' => 'Siap Diambil', 'completed' => 'Selesai', 'cancelled' => 'Dibatalkan',
+        ];
+
+        $current = $order->status;
+        $next = $transitions[$current] ?? [];
+
+        if (! in_array($status, $next, true)) {
+            return back()->with('error', 'Transisi status tidak valid: pesanan tidak dapat diubah dari "'.($statusLabel[$current] ?? $current).'" ke "'.($statusLabel[$status] ?? $status).'".');
+        }
+
+        // Pesanan tidak boleh diselesaikan sebelum pembayaran LUNAS.
+        if ($status === 'completed' && $order->payment_status !== 'paid') {
+            return back()->with('error', 'Pesanan belum LUNAS. Konfirmasi pembayaran terlebih dahulu sebelum menyelesaikan pesanan.');
         }
 
         $order->status = $status;
@@ -111,6 +164,11 @@ class KasirController extends Controller
             return back()->with('error', 'Pembayaran order ini sudah dikonfirmasi.');
         }
 
+        // Order yang sudah dibatalkan tidak boleh ditandai LUNAS.
+        if ($order->status === 'cancelled') {
+            return back()->with('error', 'Pesanan sudah dibatalkan — pembayaran tidak dapat dikonfirmasi.');
+        }
+
         $order->payment_status = 'paid';
         $order->paid_at = now();
         $order->confirmed_by = $request->user()->id;
@@ -123,10 +181,10 @@ class KasirController extends Controller
     {
         $orders = Order::with(['restaurantTable'])
             ->latest()
-            ->get();
+            ->paginate(20);
 
         $stats = [
-            'revenue' => Order::where('payment_status', 'paid')->whereDate('created_at', today())->sum('total'),
+            'revenue' => Order::where('payment_status', 'paid')->whereBetween('created_at', [today()->startOfDay(), today()->endOfDay()])->sum('total'),
             'success' => Order::where('payment_status', 'paid')->count(),
             'waiting' => Order::where('payment_status', 'unpaid')->count(),
         ];
@@ -136,7 +194,7 @@ class KasirController extends Controller
 
     public function notifications(): View
     {
-        $notifications = \App\Models\Notification::latest()->take(30)->get();
+        $notifications = \App\Models\Notification::with('order')->latest()->take(30)->get();
 
         return view('admin.notifications.index', compact('notifications'));
     }
@@ -176,7 +234,7 @@ class KasirController extends Controller
     public function tables(): View
     {
         $tables = RestaurantTable::query()
-            ->with(['orders' => fn ($q) => $q->latest()])
+            ->with(['orders' => fn ($q) => $q->latest()->with('orderItems')])
             ->orderBy('table_number')
             ->get();
 
@@ -195,10 +253,12 @@ class KasirController extends Controller
         $allowed = ['available', 'occupied', 'reserved'];
         $status = $request->input('status');
 
-        if (in_array($status, $allowed, true)) {
-            $table->status = $status;
-            $table->save();
+        if (! in_array($status, $allowed, true)) {
+            return back()->with('error', 'Status meja tidak valid.');
         }
+
+        $table->status = $status;
+        $table->save();
 
         return back()->with('success', 'Status meja diperbarui.');
     }

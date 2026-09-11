@@ -31,7 +31,7 @@
     <div class="flex flex-col gap-2">
         <label class="font-label-sm text-label-sm text-on-surface" for="email">Email atau Username</label>
         <div class="relative">
-            <input class="w-full bg-surface-container-lowest border rounded-lg px-4 py-3 font-body-md text-body-md text-on-surface placeholder:text-outline-variant focus:outline-none focus:ring-2 transition-all {{ $errors->has('email') ? 'border-error focus:ring-error-container focus:border-error' : 'border-outline-variant focus:ring-secondary-container focus:border-primary' }}"
+            <input class="w-full bg-surface-container-lowest border rounded-lg px-4 py-3 pr-10 font-body-md text-body-md text-on-surface placeholder:text-outline-variant focus:outline-none focus:ring-2 transition-all {{ $errors->has('email') ? 'border-error focus:ring-error-container focus:border-error' : 'border-outline-variant focus:ring-secondary-container focus:border-primary' }}"
                    id="email" name="email" placeholder="Masukkan email Anda" type="text" value="{{ old('email') }}" required autofocus/>
             @error('email')
             <span class="material-symbols-outlined absolute right-3 top-3 text-error pointer-events-none" style="font-variation-settings: 'FILL' 1;">error</span>
@@ -61,7 +61,7 @@
             </div>
             <span class="font-body-md text-body-md text-on-surface-variant group-hover:text-on-surface transition-colors">Ingat saya</span>
         </label>
-        <a class="font-label-sm text-label-sm text-primary hover:text-secondary-fixed-dim transition-colors" href="#">Lupa Password?</a>
+        <span class="font-label-sm text-label-sm text-outline opacity-60 cursor-not-allowed select-none" title="Fitur reset password segera hadir">Lupa Password?</span>
     </div>
 
     <button class="mt-2 w-full bg-primary hover:bg-tertiary-container text-on-primary font-label-sm text-label-sm py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 relative overflow-hidden group" id="submitBtn" type="submit">
@@ -72,7 +72,7 @@
 
 <div class="text-center relative z-10">
     <p class="font-body-md text-body-md text-outline-variant text-[12px]">
-        Butuh bantuan akses? <a class="text-primary hover:underline" href="#">Hubungi IT Support</a>
+        Butuh bantuan akses? <span class="text-outline opacity-60 cursor-not-allowed select-none" title="Hubungi administrator restoran">Hubungi IT Support</span>
     </p>
 </div>
 </main>
@@ -99,6 +99,45 @@
         btnText.textContent = 'Memproses...';
         spinner.style.display = '';
     }
+
+    function resetButton() {
+        const btn = document.getElementById('submitBtn');
+        const btnText = document.getElementById('btnText');
+        const spinner = document.getElementById('spinnerIcon');
+        if (!btn) return;
+        btn.classList.remove('opacity-90', 'cursor-not-allowed');
+        btn.disabled = false;
+        btnText.textContent = 'Masuk';
+        spinner.style.display = 'none';
+    }
+
+    // Token CSRF berubah setelah login (session di-regenerate), sedangkan halaman
+    // login yang di-restore dari bfcache masih membawa token lama -> submit 419.
+    // Ambil token sesi terkini lalu perbarui form & meta, tanpa reload.
+    function refreshCsrf() {
+        fetch('{{ url('/csrf-token') }}')
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                const input = document.querySelector('input[name="_token"]');
+                const meta = document.querySelector('meta[name="csrf-token"]');
+                if (input) input.value = d.token;
+                if (meta) meta.setAttribute('content', d.token);
+            })
+            .catch(function () {});
+    }
+
+    // Perbaikan bug "tombol Masuk beku Memproses..." & "419 Page Expired":
+    // setelah login lalu Back browser, halaman login di-restore dari bfcache
+    // (tombol disabled + token CSRF lama). Reset tombol + refresh token,
+    // TANPA reload, sehingga tetap kembali ke halaman login yang normal & bisa dipakai.
+    window.addEventListener('pageshow', function (e) {
+        if (e.persisted) {
+            resetButton();
+            refreshCsrf();
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', resetButton);
 </script>
 </body>
 </html>

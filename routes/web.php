@@ -7,7 +7,13 @@ use App\Http\Controllers\OrderController;
 
 // ===== Authentication (internal restoran) =====
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
-Route::post('/login', [AuthController::class, 'login'])->name('login.attempt');
+Route::post('/login', [AuthController::class, 'login'])->name('login.attempt')->middleware('throttle:login');
+
+// Mengembalikan token CSRF sesi saat ini (untuk refresh token di halaman login
+// yang di-restore dari bfcache saat tombol Back ditekan).
+Route::get('/csrf-token', function () {
+    return response()->json(['token' => csrf_token()]);
+});
 
 // Register publik dihapus — akun hanya dibuat oleh Admin (Manajemen Pengguna).
 Route::middleware('auth')->group(function () {
@@ -53,18 +59,17 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
 });
 
 Route::get('/', function () {
-    $table = App\Models\RestaurantTable::query()->orderBy('id')->first();
-    return $table ? redirect()->route('menu', $table->qr_token) : response('Tidak ada meja tersedia', 404);
+    // Landing tanpa token: customer diarahkan scan QR meja. (Tidak membocorkan token meja.)
+    return view('customer.table-status', ['message' => 'Silakan pindai QR Code pada meja Anda untuk mulai memesan.']);
 });
 
-Route::get('/menu', [MenuController::class, 'tableEntry'])->name('menu.entry');
 Route::get('/qr-test', [MenuController::class, 'qrTest'])->name('menu.qr-test');
 
 Route::get('/order/{table:qr_token}', [MenuController::class, 'index'])->name('menu')->middleware(App\Http\Middleware\EnsureCustomerSession::class);
-Route::post('/order/{table:qr_token}/payment', [OrderController::class, 'payment'])->name('order.payment')->middleware(App\Http\Middleware\EnsureCustomerSession::class);
+Route::post('/order/{table:qr_token}/payment', [OrderController::class, 'payment'])->name('order.payment')->middleware([App\Http\Middleware\EnsureCustomerSession::class, 'throttle:order-create']);
 Route::get('/order/{table:qr_token}/payment', [OrderController::class, 'paymentSelect'])->name('order.payment.select')->middleware(App\Http\Middleware\EnsureCustomerSession::class);
 Route::get('/order/{table:qr_token}/payment/qris', [OrderController::class, 'qris'])->name('order.payment.qris')->middleware(App\Http\Middleware\EnsureCustomerSession::class);
 Route::get('/order/{table:qr_token}/payment/cash', [OrderController::class, 'cash'])->name('order.payment.cash')->middleware(App\Http\Middleware\EnsureCustomerSession::class);
-Route::post('/order/{table:qr_token}/confirm', [OrderController::class, 'confirm'])->name('order.confirm')->middleware(App\Http\Middleware\EnsureCustomerSession::class);
+Route::post('/order/{table:qr_token}/confirm', [OrderController::class, 'confirm'])->name('order.confirm')->middleware([App\Http\Middleware\EnsureCustomerSession::class, 'throttle:order-create']);
 Route::get('/order/{table:qr_token}/status/{order}', [OrderController::class, 'status'])->name('order.status')->middleware(App\Http\Middleware\EnsureCustomerSession::class);
 Route::get('/order/{table:qr_token}/status/{order}/poll', [OrderController::class, 'pollStatus'])->name('order.poll')->middleware(App\Http\Middleware\EnsureCustomerSession::class);

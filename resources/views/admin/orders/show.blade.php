@@ -5,7 +5,7 @@
 @php
     $statusLabel = ['pending' => 'Menunggu', 'confirmed' => 'Diterima', 'preparing' => 'Diproses', 'served' => 'Siap Diambil', 'completed' => 'Selesai', 'cancelled' => 'Dibatalkan'];
     $payLabel = ['qris' => 'QRIS', 'cash' => 'Tunai'];
-    $paymentLabel = ['paid' => 'LUNAS', 'unpaid' => 'Menunggu Pembayaran', 'waiting_verification' => 'Menunggu Verifikasi', 'failed' => 'Gagal'];
+    $paymentLabel = ['paid' => 'LUNAS', 'unpaid' => 'Menunggu Pembayaran'];
     $optionType = ['variation' => 'Varian', 'topping' => 'Topping', 'sauce' => 'Saus'];
 @endphp
 
@@ -132,7 +132,7 @@
                     <span class="material-symbols-outlined">check_circle</span> Selesaikan Pesanan
                 </button>
                 @endif
-                @if (! in_array($order->status, ['completed', 'cancelled']))
+                @if (in_array($order->status, ['pending', 'confirmed', 'preparing']))
                 <form method="POST" action="{{ route('kasir.orders.status', $order) }}" onsubmit="return confirm('Batalkan pesanan ini?')">
                     @csrf
                     @method('PATCH')

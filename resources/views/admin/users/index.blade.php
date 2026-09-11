@@ -23,7 +23,7 @@
         <div class="p-4 border-b border-outline-variant bg-surface">
             <div class="relative w-full sm:w-72">
                 <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
-                <input x-model="q" class="w-full pl-10 pr-4 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-body-md focus:border-primary focus:ring-1 focus:ring-secondary-fixed-dim outline-none transition-shadow" placeholder="Cari nama atau email..."/>
+                <input x-model="q" aria-label="Cari nama atau email" class="w-full pl-10 pr-4 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-body-md focus:border-primary focus:ring-1 focus:ring-secondary-fixed-dim outline-none transition-shadow" placeholder="Cari nama atau email..."/>
             </div>
         </div>
         <div class="overflow-x-auto">
@@ -60,7 +60,7 @@
                         <td class="py-3 px-4 font-body-md text-[13px] text-on-surface-variant">{{ $user->created_at->format('d M Y') }}</td>
                         <td class="py-3 px-4">
                             <div class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button @click="openEdit({ id: {{ $user->id }}, name: '{{ $user->name }}', email: '{{ $user->email }}', role: '{{ $user->role }}', is_active: {{ $user->is_active ? 'true' : 'false' }}, isSelf: {{ $user->id === Auth::id() ? 'true' : 'false' }}, canToggle: {{ $user->id === Auth::id() ? 'false' : 'true' }}, canDelete: {{ $user->id === Auth::id() ? 'false' : 'true' }} })" class="p-1.5 rounded hover:bg-surface-container text-on-surface-variant hover:text-primary transition-colors" title="Edit"><span class="material-symbols-outlined text-[20px]">edit</span></button>
+                                <button @click="openEdit({ id: {{ $user->id }}, name: @js($user->name), email: @js($user->email), role: @js($user->role), is_active: {{ $user->is_active ? 'true' : 'false' }}, isSelf: {{ $user->id === Auth::id() ? 'true' : 'false' }}, canToggle: {{ $user->id === Auth::id() ? 'false' : 'true' }}, canDelete: {{ $user->id === Auth::id() ? 'false' : 'true' }} })" class="p-1.5 rounded hover:bg-surface-container text-on-surface-variant hover:text-primary transition-colors" title="Edit"><span class="material-symbols-outlined text-[20px]">edit</span></button>
                                 <form method="POST" action="{{ route('admin.users.toggle', $user) }}">
                                     @csrf
                                     @method('PATCH')

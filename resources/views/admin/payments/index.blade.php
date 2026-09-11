@@ -4,8 +4,8 @@
 @section('content')
 @php
     $payLabel = ['qris' => 'QRIS', 'cash' => 'Tunai'];
-    $paymentLabel = ['paid' => 'Lunas', 'unpaid' => 'Menunggu Pembayaran', 'waiting_verification' => 'Menunggu Verifikasi'];
-    $paymentClass = ['paid' => 'bg-secondary/20 text-secondary', 'unpaid' => 'bg-[#FDE68A] text-[#92400E]', 'waiting_verification' => 'bg-amber-100 text-amber-700'];
+    $paymentLabel = ['paid' => 'Lunas', 'unpaid' => 'Menunggu Pembayaran'];
+    $paymentClass = ['paid' => 'bg-secondary/20 text-secondary', 'unpaid' => 'bg-[#FDE68A] text-[#92400E]'];
 @endphp
 
 <div class="max-w-container-max mx-auto p-margin-mobile md:p-margin-desktop">
@@ -58,6 +58,9 @@
                         @endforelse
                     </tbody>
                 </table>
+            </div>
+            <div class="p-4 border-t border-outline-variant">
+                {{ $orders->links() }}
             </div>
         </div>
     </div>

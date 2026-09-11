@@ -15,8 +15,10 @@
     </div>
     <h2 class="text-lg font-bold text-gray-800 mb-2">{{ $message }}</h2>
     <p class="text-sm text-gray-500 mb-6 max-w-xs leading-relaxed">Silakan pindai QR Code pada meja Anda untuk memulai pesanan.</p>
+    @if (app()->environment('local', 'testing'))
     <a href="{{ route('menu.qr-test') }}" class="tap-btn pointer-events-auto px-6 h-12 rounded-xl bg-primary text-white text-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-all shadow-lg shadow-primary/20">
         Lihat Daftar QR Meja
     </a>
+    @endif
 </main>
 @endsection

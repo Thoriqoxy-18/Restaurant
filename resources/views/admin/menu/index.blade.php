@@ -17,7 +17,7 @@
     <div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
         <div class="relative w-full sm:w-72">
             <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
-            <input x-model="q" class="w-full pl-10 pr-4 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-body-md focus:border-primary focus:ring-1 focus:ring-secondary-fixed-dim outline-none transition-shadow" placeholder="Cari nama menu..."/>
+            <input x-model="q" aria-label="Cari nama menu" class="w-full pl-10 pr-4 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-body-md focus:border-primary focus:ring-1 focus:ring-secondary-fixed-dim outline-none transition-shadow" placeholder="Cari nama menu..."/>
         </div>
         <div class="flex overflow-x-auto gap-2 hide-scrollbar">
             <button @click="cat = 'all'" :class="cat === 'all' ? 'border-primary bg-primary text-on-primary' : 'border-outline-variant bg-surface text-on-surface-variant hover:bg-surface-container hover:text-on-surface'"

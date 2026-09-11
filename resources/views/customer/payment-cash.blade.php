@@ -32,6 +32,7 @@
     <form method="POST" action="{{ route('order.confirm', $table) }}">
         @csrf
         <input type="hidden" name="payment_method" value="cash">
+        <input type="hidden" name="idempotency_key" value="{{ session('order_idempotency_key') }}">
         <button type="submit" class="tap-btn pointer-events-auto w-full h-12 rounded-xl bg-primary text-white text-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 mt-4">
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
             Konfirmasi Pesanan

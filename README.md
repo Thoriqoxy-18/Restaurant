@@ -56,3 +56,12 @@ If you discover a security vulnerability within Laravel, please send an e-mail t
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+
+---
+
+## Verdant Bistro — QR Ordering Restoran
+
+Aplikasi pemesanan restoran berbasis QR (Laravel + Alpine.js). Alur: customer scan QR meja → pesan → bayar (Tunai/QRIS demo) → kasir proses & konfirmasi pembayaran → dashboard admin/owner untuk laporan.
+
+**Catatan fitur yang belum aktif:**
+- **Tabel/model `payments`** dibuat di database dan model `App\Models\Payment` ada, tetapi **belum diintegrasikan** ke alur pembayaran mana pun. Saat ini konfirmasi pembayaran hanya menulis `orders.payment_status`/`paid_at`/`confirmed_by`. Jika ingin audit-trail pembayaran per-transaksi, aktifkan dengan membuat baris `Payment` saat `KasirController::confirmPayment` berhasil.

@@ -9,13 +9,17 @@ use App\Models\OrderItemOption;
 use App\Models\RestaurantTable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class OrderController extends Controller
 {
-    public function status(RestaurantTable $table, Order $order): View
+    public function status(RestaurantTable $table, Order $order, Request $request): View
     {
+        $this->ensureOrderAccess($table, $order, $request);
         $order->load(['orderItems.menuItem', 'orderItems.options', 'restaurantTable']);
         return view('customer.order-status', compact('order', 'table'));
     }
@@ -24,25 +28,73 @@ class OrderController extends Controller
     {
         // Store cart in session temporarily for the payment flow
         $cart = json_decode($request->input('cart', '[]'), true);
-        if (empty($cart)) {
-            return redirect()->route('menu', $table)->with('error', 'Cart kosong.');
+
+        if (! is_array($cart) || empty($cart)) {
+            return redirect()->route('menu', $table)->with('error', 'Keranjang Anda masih kosong. Silakan pilih menu terlebih dahulu.');
         }
-        session(['pending_cart' => $cart]);
+
+        // Validasi struktur keranjang sebelum disimpan ke session.
+        foreach ($cart as $item) {
+            if (! is_array($item) || ! isset($item['id']) || ! is_numeric($item['id'])) {
+                return redirect()->route('menu', $table)->with('error', 'Keranjang tidak valid. Silakan perbarui dan coba lagi.');
+            }
+            $qty = (int) ($item['quantity'] ?? 1);
+            if ($qty < 1 || $qty > 50) {
+                return redirect()->route('menu', $table)->with('error', 'Jumlah item tidak valid (maksimal 50 per item).');
+            }
+            if (isset($item['notes']) && mb_strlen((string) $item['notes']) > 500) {
+                return redirect()->route('menu', $table)->with('error', 'Catatan terlalu panjang (maksimal 500 karakter).');
+            }
+        }
+
+        // Keranjang diikat ke meja & sesi customer yang membuatnya, agar tidak bisa
+        // di-submit ke meja lain (cegah cross-table order).
+        $session = $request->attributes->get('customer_session');
+        session([
+            'pending_cart' => $cart,
+            'order_idempotency_key' => (string) Str::uuid(),
+            'pending_cart_table_id' => $table->id,
+            'pending_cart_session_id' => $session instanceof CustomerSession ? $session->id : null,
+        ]);
         return view('customer.payment-select', compact('table'));
     }
 
-    public function paymentSelect(RestaurantTable $table): View|RedirectResponse
+    protected function hasValidPendingCart(RestaurantTable $table, Request $request): bool
     {
-        if (!session('pending_cart')) {
-            return redirect()->route('menu', $table);
+        if (empty(session('pending_cart'))) {
+            return false;
+        }
+        if (session('pending_cart_table_id') !== $table->id) {
+            return false;
+        }
+        $session = $request->attributes->get('customer_session');
+        $storedSession = session('pending_cart_session_id');
+        if ($storedSession !== null && ! ($session instanceof CustomerSession && $session->id === $storedSession)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    protected function clearPendingCart(): void
+    {
+        session()->forget(['pending_cart', 'order_idempotency_key', 'pending_cart_table_id', 'pending_cart_session_id']);
+    }
+
+    public function paymentSelect(RestaurantTable $table, Request $request): View|RedirectResponse
+    {
+        if (! $this->hasValidPendingCart($table, $request)) {
+            $this->clearPendingCart();
+            return redirect()->route('menu', $table)->with('error', 'Sesi keranjang telah berakhir. Silakan ulangi pemesanan Anda.');
         }
         return view('customer.payment-select', compact('table'));
     }
 
-    public function qris(RestaurantTable $table): View
+    public function qris(RestaurantTable $table, Request $request): View
     {
-        if (!session('pending_cart')) {
-            return redirect()->route('menu', $table);
+        if (! $this->hasValidPendingCart($table, $request)) {
+            $this->clearPendingCart();
+            return redirect()->route('menu', $table)->with('error', 'Sesi keranjang telah berakhir. Silakan ulangi pemesanan Anda.');
         }
         $cart = session('pending_cart');
         $total = $this->calculateTotal($cart);
@@ -50,10 +102,11 @@ class OrderController extends Controller
         return view('customer.payment-qris', compact('table', 'cart', 'total', 'qrSvg'));
     }
 
-    public function cash(RestaurantTable $table): View
+    public function cash(RestaurantTable $table, Request $request): View
     {
-        if (!session('pending_cart')) {
-            return redirect()->route('menu', $table);
+        if (! $this->hasValidPendingCart($table, $request)) {
+            $this->clearPendingCart();
+            return redirect()->route('menu', $table)->with('error', 'Sesi keranjang telah berakhir. Silakan ulangi pemesanan Anda.');
         }
         $cart = session('pending_cart');
         $total = $this->calculateTotal($cart);
@@ -67,43 +120,87 @@ class OrderController extends Controller
             return redirect()->route('menu', $table)->with('error', 'Session tidak valid.');
         }
 
-        $cart = session('pending_cart');
-        if (empty($cart)) {
-            return redirect()->route('menu', $table)->with('error', 'Cart kosong.');
+        // Keranjang harus milik meja & sesi ini (cegah cross-table order).
+        if (! $this->hasValidPendingCart($table, $request)) {
+            $this->clearPendingCart();
+            return redirect()->route('menu', $table)->with('error', 'Sesi keranjang telah berakhir. Silakan ulangi pemesanan Anda.');
         }
 
+        $cart = session('pending_cart');
+
+        // Idempotency: cegah double-submit (klik ganda / koneksi lambat).
+        $idempotencyKey = $request->input('idempotency_key');
+        $sessionKey = session('order_idempotency_key');
+
+        if (! $idempotencyKey || ! $sessionKey || $idempotencyKey !== $sessionKey) {
+            return redirect()->route('menu', $table)->with('error', 'Sesi pemesanan tidak valid. Silakan ulangi pemesanan Anda.');
+        }
+
+        // Cache::add bersifat atomik: hanya satu request yang berhasil claim key ini.
+        if (! Cache::add('order_idem_'.$idempotencyKey, true, now()->addHours(2))) {
+            return redirect()->route('menu', $table)->with('error', 'Pesanan ini sudah diproses. Jangan mengirim ulang pesanan.');
+        }
+
+        // Validasi metode & penyedia pembayaran (whitelist).
         $method = $request->input('payment_method', 'cash');
+        if (! in_array($method, ['cash', 'qris'], true)) {
+            return redirect()->route('menu', $table)->with('error', 'Metode pembayaran tidak valid.');
+        }
+        $provider = null;
+        if ($method === 'qris') {
+            $provider = $request->input('provider');
+            if (! in_array($provider, ['dana', 'gopay', 'ovo', 'shopeepay', 'mobilebanking'], true)) {
+                return redirect()->route('menu', $table)->with('error', 'Aplikasi pembayaran tidak valid.');
+            }
+        }
 
         $subtotal = 0;
         $items = [];
+        $unavailable = [];
+
+        // Load semua menu item + relasi dalam satu query (hindari N+1 per item cart).
+        $menuItems = $this->loadCartMenuItems($cart);
 
         foreach ($cart as $item) {
-            $menuItem = MenuItem::find($item['id']);
-            if (!$menuItem || !$menuItem->is_available) continue;
+            if (! is_array($item) || ! isset($item['id']) || ! is_numeric($item['id'])) {
+                continue;
+            }
+            $menuItem = $menuItems[(int) $item['id']] ?? null;
+            if (!$menuItem || !$menuItem->is_available) {
+                $unavailable[] = $item['name'] ?? ('Menu (id: '.$item['id'].')');
+                continue;
+            }
 
             $itemPrice = (float) $menuItem->price;
-            $itemNotes = $item['notes'] ?? '';
+            $itemNotes = mb_substr((string) ($item['notes'] ?? ''), 0, 500);
             $variationPrice = 0;
             $options = [];
 
-            if (!empty($item['variation_id'])) {
-                $var = $menuItem->variations()->find($item['variation_id']);
+            $variationId = (int) ($item['variation_id'] ?? 0);
+            if ($variationId > 0) {
+                $var = $menuItem->variations->firstWhere('id', $variationId);
                 if ($var) {
                     $variationPrice = (float) $var->extra_price;
                     $options[] = ['type' => 'variation', 'name' => $var->name, 'extra_price' => $variationPrice];
                 }
             }
 
-            if (!empty($item['topping_ids'])) {
-                $toppings = $menuItem->toppings()->whereIn('id', $item['topping_ids'])->get();
+            $toppingIds = is_array($item['topping_ids'] ?? null)
+                ? array_filter(array_map('intval', $item['topping_ids']))
+                : [];
+            if (! empty($toppingIds)) {
+                $toppings = $menuItem->toppings->whereIn('id', $toppingIds);
                 foreach ($toppings as $t) {
                     $variationPrice += (float) $t->extra_price;
                     $options[] = ['type' => 'topping', 'name' => $t->name, 'extra_price' => (float) $t->extra_price];
                 }
             }
 
-            if (!empty($item['sauce_ids'])) {
-                $sauces = $menuItem->sauces()->whereIn('id', $item['sauce_ids'])->get();
+            $sauceIds = is_array($item['sauce_ids'] ?? null)
+                ? array_filter(array_map('intval', $item['sauce_ids']))
+                : [];
+            if (! empty($sauceIds)) {
+                $sauces = $menuItem->sauces->whereIn('id', $sauceIds);
                 foreach ($sauces as $s) {
                     $variationPrice += (float) $s->extra_price;
                     $options[] = ['type' => 'sauce', 'name' => $s->name, 'extra_price' => (float) $s->extra_price];
@@ -111,7 +208,7 @@ class OrderController extends Controller
             }
 
             $unitPrice = $itemPrice + $variationPrice;
-            $qty = max(1, (int) ($item['quantity'] ?? 1));
+            $qty = min(50, max(1, (int) ($item['quantity'] ?? 1)));
             $subtotal += $unitPrice * $qty;
 
             $items[] = [
@@ -121,6 +218,14 @@ class OrderController extends Controller
                 'notes' => $itemNotes,
                 'options' => $options,
             ];
+        }
+
+        // Jangan skip diam-diam: jika ada item yang sudah tidak tersedia,
+        // batalkan seluruh proses dan beri tahu customer item mana yang bermasalah.
+        if (! empty($unavailable)) {
+            $names = implode(', ', array_unique($unavailable));
+
+            return redirect()->route('menu', $table)->with('error', 'Beberapa item sudah tidak tersedia: '.$names.'. Silakan perbarui keranjang Anda lalu pesan ulang.');
         }
 
         if (empty($items)) {
@@ -135,7 +240,7 @@ class OrderController extends Controller
         // Semua pembayaran (Tunai & QRIS demo) mulai sebagai "Menunggu Pembayaran".
         // Status menjadi Lunas hanya setelah Kasir mengonfirmasi bahwa uang diterima.
         $paymentStatus = 'unpaid';
-        $paymentProvider = $method === 'qris' ? $request->input('provider') : null;
+        $paymentProvider = $provider;
 
         try {
             DB::beginTransaction();
@@ -174,7 +279,7 @@ class OrderController extends Controller
             }
 
             DB::commit();
-            session()->forget('pending_cart');
+            session()->forget(['pending_cart', 'order_idempotency_key']);
 
             // Notifikasi untuk Kasir
             try {
@@ -185,45 +290,88 @@ class OrderController extends Controller
                     'order_id' => $order->id,
                 ]);
             } catch (\Throwable $e) {
-                // Notifikasi bersifat opsional — jangan gagalkan order.
+                // Notifikasi bersifat opsional — jangan gagalkan order, tapi catat kegagalannya.
+                Log::warning('Gagal membuat notifikasi pesanan', ['order_id' => $order->id ?? null, 'exception' => $e]);
             }
 
             return redirect()->route('order.status', [$table, $order, 'placed' => 1]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
-            return redirect()->route('menu', $table)->with('error', 'Gagal memproses pesanan: ' . $e->getMessage());
+            Log::error('Gagal memproses pesanan', ['exception' => $e, 'table_id' => $table->id, 'session_id' => $session->id ?? null]);
+            return redirect()->route('menu', $table)->with('error', 'Terjadi kesalahan saat memproses pesanan. Silakan coba lagi.');
         }
     }
 
-    public function pollStatus(RestaurantTable $table, Order $order)
+    public function pollStatus(RestaurantTable $table, Order $order, Request $request)
     {
+        $this->ensureOrderAccess($table, $order, $request);
         $order = $order->fresh();
 
         return response()->json(['status' => $order->status, 'payment_status' => $order->payment_status]);
     }
 
+    /**
+     * Pastikan order benar-benar milik meja & sesi customer yang mengakses.
+     * Kembalikan 404 agar keberadaan order tidak bocor (tidak membedakan
+     * order tidak ada vs order milik orang lain).
+     */
+    protected function ensureOrderAccess(RestaurantTable $table, Order $order, Request $request): void
+    {
+        $session = $request->attributes->get('customer_session');
+        $sessionId = $session instanceof CustomerSession ? $session->id : null;
+
+        abort_unless(
+            $order->restaurant_table_id === $table->id && $order->customer_session_id === $sessionId,
+            404
+        );
+    }
+
     private function calculateTotal(array $cart): array
     {
+        $menuItems = $this->loadCartMenuItems($cart);
         $subtotal = 0;
         foreach ($cart as $item) {
-            $menuItem = MenuItem::find($item['id']);
+            if (! is_array($item) || ! isset($item['id'])) {
+                continue;
+            }
+            $menuItem = $menuItems[(int) $item['id']] ?? null;
             if (!$menuItem) continue;
             $extra = 0;
-            if (!empty($item['variation_id'])) {
-                $var = $menuItem->variations()->find($item['variation_id']);
+            $variationId = (int) ($item['variation_id'] ?? 0);
+            if ($variationId > 0) {
+                $var = $menuItem->variations->firstWhere('id', $variationId);
                 if ($var) $extra += (float) $var->extra_price;
             }
-            if (!empty($item['topping_ids'])) {
-                $extra += (float) $menuItem->toppings()->whereIn('id', $item['topping_ids'])->sum('extra_price');
+            $toppingIds = is_array($item['topping_ids'] ?? null) ? array_filter(array_map('intval', $item['topping_ids'])) : [];
+            if (! empty($toppingIds)) {
+                $extra += (float) $menuItem->toppings->whereIn('id', $toppingIds)->sum('extra_price');
             }
-            if (!empty($item['sauce_ids'])) {
-                $extra += (float) $menuItem->sauces()->whereIn('id', $item['sauce_ids'])->sum('extra_price');
+            $sauceIds = is_array($item['sauce_ids'] ?? null) ? array_filter(array_map('intval', $item['sauce_ids'])) : [];
+            if (! empty($sauceIds)) {
+                $extra += (float) $menuItem->sauces->whereIn('id', $sauceIds)->sum('extra_price');
             }
-            $subtotal += ((float) $menuItem->price + $extra) * max(1, (int) ($item['quantity'] ?? 1));
+            $subtotal += ((float) $menuItem->price + $extra) * min(50, max(1, (int) ($item['quantity'] ?? 1)));
         }
         $tax = round($subtotal * 0.05, 2);
         $service = round($subtotal * 0.05, 2);
         $total = round($subtotal + $tax + $service, 2);
         return ['subtotal' => $subtotal, 'tax' => $tax, 'service' => $service, 'total' => $total];
+    }
+
+    /**
+     * Ambil semua menu item + relasi (variations/toppings/sauces) dalam SATU query,
+     * agar loop cart tidak memicu 4-8 query per item.
+     */
+    private function loadCartMenuItems(array $cart): \Illuminate\Support\Collection
+    {
+        $ids = collect($cart)->pluck('id')->filter()->map(fn ($id) => (int) $id)->unique()->values();
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        return MenuItem::with(['variations', 'toppings', 'sauces'])
+            ->whereIn('id', $ids)
+            ->get()
+            ->keyBy('id');
     }
 }

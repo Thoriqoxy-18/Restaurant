@@ -21,22 +21,32 @@ class AdminController extends Controller
 
     public function home(): View
     {
+        $todayStart = today()->startOfDay();
+        $todayEnd = today()->endOfDay();
+
         $stats = [
-            'orders' => Order::whereDate('created_at', today())->count(),
-            'revenue' => Order::where('payment_status', 'paid')->whereDate('created_at', today())->sum('total'),
+            'orders' => Order::whereBetween('created_at', [$todayStart, $todayEnd])->count(),
+            'revenue' => Order::where('payment_status', 'paid')->whereBetween('created_at', [$todayStart, $todayEnd])->sum('total'),
             'processing' => Order::whereIn('status', ['confirmed', 'preparing'])->count(),
-            'sold' => DB::table('order_items')->whereDate('created_at', today())->sum('quantity'),
+            'sold' => DB::table('order_items')->whereBetween('created_at', [$todayStart, $todayEnd])->sum('quantity'),
         ];
 
-        $last7 = collect(range(6, 0))->map(function ($i) {
+        // Grafik pendapatan 7 hari: satu query GROUP BY, bukan 7 query terpisah.
+        $start = now()->subDays(6)->startOfDay();
+        $end = now()->endOfDay();
+        $revenueByDay = Order::where('payment_status', 'paid')
+            ->whereBetween('created_at', [$start, $end])
+            ->selectRaw('DATE(created_at) as day, SUM(total) as total')
+            ->groupBy('day')
+            ->pluck('total', 'day');
+
+        $last7 = collect(range(6, 0))->map(function ($i) use ($revenueByDay) {
             $date = now()->subDays($i)->startOfDay();
-            $amount = Order::where('payment_status', 'paid')
-                ->whereBetween('created_at', [$date, $date->copy()->endOfDay()])
-                ->sum('total');
+            $key = $date->format('Y-m-d');
 
             return [
                 'label' => $date->format('D'),
-                'amount' => (float) $amount,
+                'amount' => (float) ($revenueByDay[$key] ?? 0),
             ];
         });
         $max = max(1, $last7->max('amount'));
@@ -94,9 +104,6 @@ class AdminController extends Controller
     public function menuUpdate(Request $request, MenuItem $menu): RedirectResponse
     {
         $data = $this->menuData($request, $menu);
-        if ($request->hasFile('image')) {
-            $data['image_path'] = $this->storeImage($request);
-        }
         $menu->update($data);
         $this->saveOptions($menu, $request);
 
@@ -119,6 +126,7 @@ class AdminController extends Controller
             'old_price' => ['nullable', 'numeric', 'min:0'],
             'description' => ['nullable', 'string'],
             'prep_time_minutes' => ['nullable', 'integer', 'min:1'],
+            'image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
         ]);
 
         $data = [
@@ -146,15 +154,13 @@ class AdminController extends Controller
     protected function storeImage(Request $request): string
     {
         $file = $request->file('image');
-        $dir = public_path('assets/images/menu');
-        if (! is_dir($dir)) {
-            mkdir($dir, 0777, true);
-        }
-        $ext = strtolower($file->getClientOriginalExtension()) ?: 'jpeg';
-        $filename = Str::slug($request->name).'-'.time().'.'.$ext;
-        $file->move($dir, $filename);
 
-        return 'assets/images/menu/'.$filename;
+        // Nama file dibuat server-side (tidak memakai nama/ekstensi dari client),
+        // dan disimpan ke storage disk (bukan public webroot langsung).
+        $filename = Str::random(32).'.'.($file->guessExtension() ?: 'jpg');
+        $path = $file->storeAs('menu-images', $filename, 'public');
+
+        return 'storage/'.$path;
     }
 
     protected function saveOptions(MenuItem $menu, Request $request): void
@@ -164,11 +170,12 @@ class AdminController extends Controller
             $rows = $request->input($field, []);
             $i = 0;
             foreach ($rows as $row) {
-                if (isset($row['name']) && trim((string) $row['name']) !== '') {
+                $name = is_array($row) ? trim((string) ($row['name'] ?? '')) : '';
+                if ($name !== '') {
                     $relation->create([
                         'menu_item_id' => $menu->id,
-                        'name' => trim((string) $row['name']),
-                        'extra_price' => (float) ($row['extra_price'] ?? 0),
+                        'name' => mb_substr($name, 0, 255),
+                        'extra_price' => max(0, (float) ($row['extra_price'] ?? 0)),
                         'sort_order' => $i,
                     ]);
                 }
@@ -215,6 +222,16 @@ class AdminController extends Controller
             'role' => ['required', 'in:kasir,admin'],
             'password' => ['nullable', 'string', 'min:8'],
         ]);
+
+        // Admin tidak boleh menurunkan role atau menonaktifkan akun dirinya sendiri.
+        if ($user->id === Auth::id()) {
+            if ($validated['role'] !== 'admin') {
+                return back()->with('error', 'Tidak dapat menurunkan role akun sendiri.');
+            }
+            if (! $request->boolean('is_active')) {
+                return back()->with('error', 'Tidak dapat menonaktifkan akun sendiri.');
+            }
+        }
 
         $user->name = $validated['name'];
         $user->email = $validated['email'];
@@ -273,9 +290,9 @@ class AdminController extends Controller
         $num = RestaurantTable::max('table_number') + 1;
         $code = 'A'.str_pad((string) $num, 2, '0', STR_PAD_LEFT);
 
+        // qr_token dibuat otomatis random oleh model (tidak bisa ditebak).
         RestaurantTable::create([
             'code' => $code,
-            'qr_token' => 'table-'.strtolower($code),
             'table_number' => $num,
             'name' => $request->name,
             'capacity' => (int) $request->capacity,
@@ -294,7 +311,7 @@ class AdminController extends Controller
 
     public function tableQrDownload(RestaurantTable $table)
     {
-        $png = \App\Support\DemoQrCode::png(url('/menu?table='.$table->id), 14, 4);
+        $png = \App\Support\DemoQrCode::png(route('menu', $table), 14, 4);
         $name = 'qr-meja-'.Str::slug($table->label).'.png';
         $headers = ['Content-Type' => 'image/png'];
 

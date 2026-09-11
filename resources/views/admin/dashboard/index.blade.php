@@ -166,13 +166,19 @@
             hideTimer = setTimeout(function() { indicator.classList.add('hidden'); }, 4000);
         }
 
+        function esc(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+
         function cardHtml(o) {
             return '<div class="flex justify-between items-start mb-3">'
-                + '<div><span class="font-label-sm text-label-sm text-on-surface-variant block">#' + o.order_number + '</span>'
-                + '<span class="font-body-md text-body-md text-on-surface font-semibold">' + o.table + '</span></div>'
+                + '<div><span class="font-label-sm text-label-sm text-on-surface-variant block">#' + esc(o.order_number) + '</span>'
+                + '<span class="font-body-md text-body-md text-on-surface font-semibold">' + esc(o.table) + '</span></div>'
                 + '<span class="bg-secondary/10 text-secondary font-label-sm text-label-sm px-2 py-1 rounded">Baru</span></div>'
                 + '<div class="font-body-md text-body-md text-on-surface-variant mb-4">' + o.items_html + '</div>'
-                + '<div class="mt-auto"><form method="POST" action="' + o.url + '">'
+                + '<div class="mt-auto"><form method="POST" action="' + esc(o.url) + '">'
                 + '<input type="hidden" name="_token" value="' + csrf + '">'
                 + '<input type="hidden" name="_method" value="PATCH">'
                 + '<input type="hidden" name="status" value="confirmed">'

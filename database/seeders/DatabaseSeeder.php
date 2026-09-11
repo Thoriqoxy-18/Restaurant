@@ -12,6 +12,14 @@ use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 
+/**
+ * PERHATIAN (sebelum go-live / dipakai user asli):
+ * Di environment NON-produksi, akun seeder memakai password default 'password'
+ * (admin@verdant.test & kasir@verdant.test). WAJIB ganti semua password default
+ * sebelum aplikasi dipakai oleh user asli — baik lewat menu Admin > Pengguna,
+ * lewat php artisan tinker, atau reset password saat provisioning.
+ * Di environment production, seeder otomatis membuat password acak (lihat di bawah).
+ */
 class DatabaseSeeder extends Seeder
 {
     public function run(): void

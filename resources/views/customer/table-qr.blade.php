@@ -18,16 +18,16 @@
             <div class="flex items-center justify-between mb-3">
                 <div>
                     <h2 class="font-bold text-gray-800">{{ $table->label }}</h2>
-                    <p class="text-xs text-gray-400 mt-0.5 break-all">{{ url('/menu?table=' . $table->id) }}</p>
+                    <p class="text-xs text-gray-400 mt-0.5 break-all">{{ route('menu', $table) }}</p>
                 </div>
                 <span class="bg-green-100 text-green-700 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase">{{ $table->status }}</span>
             </div>
 
             <div class="mx-auto w-40 h-40 bg-white rounded-xl border-2 border-gray-100 flex items-center justify-center overflow-hidden p-1.5 demo-qr mb-3">
-                {!! \App\Support\DemoQrCode::svg(url('/menu?table=' . $table->id)) !!}
+                {!! \App\Support\DemoQrCode::svg(route('menu', $table)) !!}
             </div>
 
-            <a href="{{ url('/menu?table=' . $table->id) }}"
+            <a href="{{ route('menu', $table) }}"
                class="tap-btn pointer-events-auto w-full h-11 rounded-xl bg-primary text-white text-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-all shadow-lg shadow-primary/20">
                 Lihat Menu Meja Ini
             </a>

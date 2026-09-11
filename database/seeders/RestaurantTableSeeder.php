@@ -13,10 +13,11 @@ class RestaurantTableSeeder extends Seeder
             $num = str_pad((string) $n, 2, '0', STR_PAD_LEFT);
             $code = 'A' . $num;
 
+            // qr_token tidak di-set: dibuat otomatis random oleh model (tidak bisa ditebak).
+            // updateOrCreate by code agar idempoten tanpa mereset token meja yang sudah ada.
             RestaurantTable::updateOrCreate(
-                ['qr_token' => 'table-' . strtolower($code)],
+                ['code' => $code],
                 [
-                    'code' => $code,
                     'table_number' => $n,
                     'name' => 'Meja ' . $num,
                     'capacity' => 4,

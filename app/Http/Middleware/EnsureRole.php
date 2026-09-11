@@ -16,7 +16,20 @@ class EnsureRole
     {
         $user = $request->user();
 
-        if (! $user || ! in_array($user->role, $roles, true)) {
+        if (! $user) {
+            return redirect()->route('login');
+        }
+
+        // User yang dinonaktifkan tidak boleh lanjut akses (session langsung di-revoke).
+        if (! $user->is_active) {
+            auth('web')->logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return redirect()->route('login')->with('error', 'Akun Anda telah dinonaktifkan. Silakan hubungi administrator.');
+        }
+
+        if (! in_array($user->role, $roles, true)) {
             abort(403, 'Akses ditolak.');
         }
 

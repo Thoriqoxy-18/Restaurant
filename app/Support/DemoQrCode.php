@@ -2,9 +2,11 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Facades\Log;
+
 /**
  * Helper untuk QR Code DEMO (simulasi).
- * Menghasilkan QR berdasarkan data dummy — BUKAN QRIS merchant asli.
+ * Menghasilkan QR berdasarkan data dummy �?" BUKAN QRIS merchant asli.
  */
 class DemoQrCode
 {
@@ -42,8 +44,36 @@ class DemoQrCode
 
             return $writer->writeString($data);
         } catch (\Throwable $e) {
+            Log::error('QR SVG gagal dibuat', ['data' => $data, 'exception' => $e]);
+
             return '';
         }
+    }
+
+    /**
+     * Kembalikan path publik ke file SVG QR (di-cache di public/qr-tables).
+     * Generate sekali per key (qr_token); jika token berubah, file baru dibuat.
+     */
+    public static function svgFile(string $data, string $key): string
+    {
+        $dir = public_path('qr-tables');
+        if (! is_dir($dir)) {
+            mkdir($dir, 0777, true);
+        }
+
+        $file = $dir.'/svg-'.md5($key).'.svg';
+        if (is_file($file) && filesize($file) > 0) {
+            return 'qr-tables/'.basename($file);
+        }
+
+        $svg = static::svg($data);
+        if ($svg === '') {
+            return 'assets/images/default/no-image.svg';
+        }
+
+        file_put_contents($file, $svg);
+
+        return 'qr-tables/'.basename($file);
     }
 
     /**
@@ -81,6 +111,8 @@ class DemoQrCode
 
             return $png;
         } catch (\Throwable $e) {
+            Log::error('QR PNG gagal dibuat', ['data' => $data, 'exception' => $e]);
+
             return '';
         }
     }

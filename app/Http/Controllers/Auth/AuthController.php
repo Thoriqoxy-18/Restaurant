@@ -50,6 +50,17 @@ class AuthController extends Controller
             ]);
         }
 
+        // Akun yang dinonaktifkan tidak boleh login.
+        if (! Auth::user()->is_active) {
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            throw ValidationException::withMessages([
+                'email' => 'Akun Anda telah dinonaktifkan. Silakan hubungi administrator.',
+            ]);
+        }
+
         $request->session()->regenerate();
 
         return redirect()->intended($this->homePath(Auth::user()));

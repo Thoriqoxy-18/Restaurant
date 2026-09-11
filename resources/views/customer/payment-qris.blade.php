@@ -119,6 +119,7 @@
             <input type="hidden" name="payment_method" value="qris">
             <input type="hidden" name="simulated" value="1">
             <input type="hidden" name="provider" :value="provider">
+            <input type="hidden" name="idempotency_key" value="{{ session('order_idempotency_key') }}">
             <button type="submit" class="tap-btn pointer-events-auto w-full h-12 rounded-xl bg-primary text-white text-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-all shadow-lg shadow-primary/20">
                 Lihat Pesanan
             </button>
