@@ -57,8 +57,10 @@ class DemoQrCode
     public static function svgFile(string $data, string $key): string
     {
         $dir = public_path('qr-tables');
-        if (! is_dir($dir)) {
-            mkdir($dir, 0777, true);
+        if (! is_dir($dir) && ! @mkdir($dir, 0777, true) && ! is_dir($dir)) {
+            Log::error('Gagal membuat direktori cache QR', ['dir' => $dir]);
+
+            throw new \RuntimeException('Gagal menyiapkan direktori QR meja.');
         }
 
         $file = $dir.'/svg-'.md5($key).'.svg';
@@ -68,10 +70,16 @@ class DemoQrCode
 
         $svg = static::svg($data);
         if ($svg === '') {
+            Log::error('QR SVG kosong saat cache', ['key' => $key]);
+
             return 'assets/images/default/no-image.svg';
         }
 
-        file_put_contents($file, $svg);
+        if (@file_put_contents($file, $svg) === false) {
+            Log::error('Gagal menulis file QR SVG', ['file' => $file]);
+
+            throw new \RuntimeException('Gagal menyimpan QR meja.');
+        }
 
         return 'qr-tables/'.basename($file);
     }

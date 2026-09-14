@@ -2,7 +2,7 @@
 @section('title', 'Manajemen Menu - Verdant Bistro')
 
 @section('content')
-<div class="max-w-container-max mx-auto" x-data="{ cat: 'all', q: '' }">
+<div class="max-w-container-max mx-auto">
     <div class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
         <div>
             <h2 class="font-headline-lg text-headline-lg text-on-surface">Manajemen Menu</h2>
@@ -15,16 +15,17 @@
     </div>
 
     <div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
-        <div class="relative w-full sm:w-72">
+        <form method="GET" action="{{ route('admin.menu') }}" class="relative w-full sm:w-72">
             <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
-            <input x-model="q" aria-label="Cari nama menu" class="w-full pl-10 pr-4 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-body-md focus:border-primary focus:ring-1 focus:ring-secondary-fixed-dim outline-none transition-shadow" placeholder="Cari nama menu..."/>
-        </div>
+            <input name="q" value="{{ $q }}" aria-label="Cari nama menu" class="w-full pl-10 pr-4 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-body-md focus:border-primary focus:ring-1 focus:ring-secondary-fixed-dim outline-none transition-shadow" placeholder="Cari nama menu..."/>
+            @if ($cat !== 'all')<input type="hidden" name="cat" value="{{ $cat }}"/>@endif
+        </form>
         <div class="flex overflow-x-auto gap-2 hide-scrollbar">
-            <button @click="cat = 'all'" :class="cat === 'all' ? 'border-primary bg-primary text-on-primary' : 'border-outline-variant bg-surface text-on-surface-variant hover:bg-surface-container hover:text-on-surface'"
-                    class="px-4 py-1.5 rounded-full border font-label-sm text-label-sm whitespace-nowrap transition-colors">Semua</button>
+            <a href="{{ route('admin.menu', ['cat' => 'all', 'q' => $q]) }}"
+               class="px-4 py-1.5 rounded-full border font-label-sm text-label-sm whitespace-nowrap transition-colors {{ $cat === 'all' ? 'border-primary bg-primary text-on-primary' : 'border-outline-variant bg-surface text-on-surface-variant hover:bg-surface-container hover:text-on-surface' }}">Semua</a>
             @foreach ($categories as $c)
-            <button @click="cat = '{{ $c->slug }}'" :class="cat === '{{ $c->slug }}' ? 'border-primary bg-primary text-on-primary' : 'border-outline-variant bg-surface text-on-surface-variant hover:bg-surface-container hover:text-on-surface'"
-                    class="px-4 py-1.5 rounded-full border font-label-sm text-label-sm whitespace-nowrap transition-colors">{{ $c->name }}</button>
+            <a href="{{ route('admin.menu', ['cat' => $c->slug, 'q' => $q]) }}"
+               class="px-4 py-1.5 rounded-full border font-label-sm text-label-sm whitespace-nowrap transition-colors {{ $cat === $c->slug ? 'border-primary bg-primary text-on-primary' : 'border-outline-variant bg-surface text-on-surface-variant hover:bg-surface-container hover:text-on-surface' }}">{{ $c->name }}</a>
             @endforeach
         </div>
     </div>
@@ -37,8 +38,7 @@
             elseif ($menu->is_bestseller) $badge = ['text' => 'Best Seller', 'cls' => 'bg-tertiary-container text-on-tertiary'];
             elseif ($menu->old_price) $badge = ['text' => 'Promo', 'cls' => 'bg-error text-on-error'];
         @endphp
-        <div x-show="(cat === 'all' || cat === '{{ $menu->category->slug }}') && (q === '' || '{{ strtolower($menu->name) }}'.includes(q.toLowerCase()))"
-             class="bg-surface-container-lowest rounded-xl border border-outline-variant/50 overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col">
+        <div class="bg-surface-container-lowest rounded-xl border border-outline-variant/50 overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col">
             <div class="relative h-44 bg-surface-container-high">
                 @if ($menu->image_path)
                 <img class="w-full h-full object-cover" src="{{ asset($menu->image_path) }}" alt="{{ $menu->name }}">
@@ -56,7 +56,7 @@
                 <div class="flex justify-between items-start mb-2 gap-2">
                     <div class="min-w-0">
                         <h3 class="font-headline-md text-headline-md text-on-surface line-clamp-1">{{ $menu->name }}</h3>
-                        <p class="font-label-sm text-label-sm text-on-surface-variant mt-0.5">{{ $menu->category->name }}</p>
+                        <p class="font-label-sm text-label-sm text-on-surface-variant mt-0.5">{{ $menu->category?->name ?? '' }}</p>
                     </div>
                     <span class="font-headline-md text-headline-md text-primary shrink-0">Rp{{ number_format($menu->price, 0, ',', '.') }}</span>
                 </div>
@@ -79,6 +79,9 @@
         @empty
         <p class="col-span-full text-center text-on-surface-variant py-10">Belum ada menu. Tambahkan menu baru.</p>
         @endforelse
+    </div>
+    <div class="mt-6">
+        {{ $menus->links() }}
     </div>
 </div>
 @endsection

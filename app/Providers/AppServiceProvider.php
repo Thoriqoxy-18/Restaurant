@@ -36,10 +36,14 @@ class AppServiceProvider extends ServiceProvider
         // Rate limit pembuatan order per meja+IP (misal maksimal 5 pesanan per menit)
         // untuk mencegah spam order + notifikasi.
         RateLimiter::for('order-create', function (Request $request) {
-            $tableToken = (string) $request->route('table');
+            $table = $request->route('table');
+            // Pakai identifier stabil: id bila sudah ter-binding, atau token string bila belum.
+            $tableKey = $table instanceof \App\Models\RestaurantTable
+                ? (string) $table->id
+                : (is_scalar($table) ? (string) $table : 'anon');
 
             return Limit::perMinute(5)
-                ->by($tableToken.'|'.$request->ip())
+                ->by($tableKey.'|'.$request->ip())
                 ->response(function () {
                     return back()->with('error', 'Terlalu banyak pesanan. Silakan tunggu sebentar lalu coba lagi.');
                 });

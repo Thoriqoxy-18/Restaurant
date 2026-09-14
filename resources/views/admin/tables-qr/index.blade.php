@@ -75,6 +75,10 @@
         <p class="col-span-full text-center text-on-surface-variant py-10">Belum ada meja.</p>
         @endforelse
     </div>
+
+    <div class="mt-6">
+        {{ $tables->links() }}
+    </div>
 </div>
 
 @push('styles')

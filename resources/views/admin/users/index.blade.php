@@ -3,7 +3,7 @@
 
 @section('content')
 <div class="max-w-container-max mx-auto" x-data="{
-    modal: false, editing: null, q: '',
+    modal: false, editing: null,
     openAdd() { this.editing = null; this.modal = true; },
     openEdit(u) { this.editing = u; this.modal = true; },
     close() { this.modal = false; this.editing = null; }
@@ -21,10 +21,10 @@
 
     <div class="bg-surface-container-lowest rounded-xl border border-outline-variant overflow-hidden shadow-sm">
         <div class="p-4 border-b border-outline-variant bg-surface">
-            <div class="relative w-full sm:w-72">
+            <form method="GET" action="{{ route('admin.users') }}" class="relative w-full sm:w-72">
                 <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
-                <input x-model="q" aria-label="Cari nama atau email" class="w-full pl-10 pr-4 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-body-md focus:border-primary focus:ring-1 focus:ring-secondary-fixed-dim outline-none transition-shadow" placeholder="Cari nama atau email..."/>
-            </div>
+                <input name="q" value="{{ $q }}" aria-label="Cari nama atau email" class="w-full pl-10 pr-4 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-body-md focus:border-primary focus:ring-1 focus:ring-secondary-fixed-dim outline-none transition-shadow" placeholder="Cari nama atau email..."/>
+            </form>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse min-w-[800px]">
@@ -40,7 +40,7 @@
                 </thead>
                 <tbody class="divide-y divide-outline-variant/50 bg-surface-container-lowest">
                     @forelse ($users as $user)
-                    <tr x-show="q === '' || '{{ $user->name }} {{ $user->email }}'.toLowerCase().includes(q.toLowerCase())" class="hover:bg-surface transition-colors group {{ $loop->even ? 'bg-surface-bright' : '' }}">
+                    <tr class="hover:bg-surface transition-colors group {{ $loop->even ? 'bg-surface-bright' : '' }}">
                         <td class="py-3 px-4">
                             <div class="flex items-center gap-3">
                                 <div class="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-label-sm font-bold text-[14px] uppercase shrink-0">{{ substr($user->name, 0, 1) }}</div>
@@ -83,7 +83,10 @@
             </table>
         </div>
         <div class="p-4 border-t border-outline-variant bg-surface text-on-surface-variant font-label-sm text-label-sm">
-            Menampilkan {{ $users->count() }} pengguna
+            Menampilkan {{ $users->total() }} pengguna
+        </div>
+        <div class="p-4 border-t border-outline-variant">
+            {{ $users->links() }}
         </div>
     </div>
 

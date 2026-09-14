@@ -8,6 +8,7 @@ use App\Models\RestaurantTable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
 class KasirController extends Controller
@@ -68,8 +69,10 @@ class KasirController extends Controller
     {
         $q = trim((string) $request->query('q'));
         $f = $request->query('f', 'all');
+        // Abaikan nilai non-string (mis. ?f[]=x) agar tidak TypeError saat dipakai array key.
+        $f = is_string($f) ? $f : 'all';
 
-        $query = Order::with(['orderItems.menuItem', 'orderItems.options', 'restaurantTable'])->latest();
+        $query = Order::with(['orderItems.menuItem', 'restaurantTable'])->latest();
 
         if ($q !== '') {
             $query->where(function ($qq) use ($q) {
@@ -146,6 +149,14 @@ class KasirController extends Controller
         }
         $order->save();
 
+        Log::info('Status order diubah', [
+            'order_id' => $order->id,
+            'from' => $order->getOriginal('status'),
+            'to' => $status,
+            'user_id' => $request->user()->id,
+            'table_id' => $order->restaurant_table_id,
+        ]);
+
         $label = match ($status) {
             'confirmed' => 'pesanan diterima',
             'preparing' => 'mulai diproses',
@@ -159,20 +170,37 @@ class KasirController extends Controller
 
     public function confirmPayment(Request $request, Order $order): RedirectResponse
     {
-        // Hanya Kasir (dicek middleware role:kasir). Pembayaran hanya bisa dikonfirmasi SEKALI.
-        if ($order->payment_status !== 'unpaid') {
-            return back()->with('error', 'Pembayaran order ini sudah dikonfirmasi.');
-        }
+        // Hanya Kasir (dicek middleware role:kasir). Atomik + lock row agar konfirmasi
+        // ganda bersamaan tidak lolos (race condition).
+        try {
+            DB::transaction(function () use ($request, $order) {
+                $locked = Order::whereKey($order->getKey())->lockForUpdate()->first();
 
-        // Order yang sudah dibatalkan tidak boleh ditandai LUNAS.
-        if ($order->status === 'cancelled') {
-            return back()->with('error', 'Pesanan sudah dibatalkan — pembayaran tidak dapat dikonfirmasi.');
-        }
+                if (! $locked || $locked->payment_status !== 'unpaid') {
+                    throw new \RuntimeException('Pembayaran order ini sudah dikonfirmasi.');
+                }
 
-        $order->payment_status = 'paid';
-        $order->paid_at = now();
-        $order->confirmed_by = $request->user()->id;
-        $order->save();
+                // Order yang sudah dibatalkan tidak boleh ditandai LUNAS.
+                if ($locked->status === 'cancelled') {
+                    throw new \RuntimeException('Pesanan sudah dibatalkan — pembayaran tidak dapat dikonfirmasi.');
+                }
+
+                $locked->payment_status = 'paid';
+                $locked->paid_at = now();
+                $locked->confirmed_by = $request->user()->id;
+                $locked->save();
+
+                Log::info('Pembayaran dikonfirmasi', [
+                    'order_id' => $locked->id,
+                    'method' => $locked->payment_method,
+                    'total' => $locked->total,
+                    'table_id' => $locked->restaurant_table_id,
+                    'user_id' => $request->user()->id,
+                ]);
+            });
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
 
         return back()->with('success', 'Pembayaran berhasil dikonfirmasi dan dinyatakan LUNAS.');
     }
@@ -181,7 +209,7 @@ class KasirController extends Controller
     {
         $orders = Order::with(['restaurantTable'])
             ->latest()
-            ->paginate(20);
+            ->paginate(20)->withQueryString();
 
         $stats = [
             'revenue' => Order::where('payment_status', 'paid')->whereBetween('created_at', [today()->startOfDay(), today()->endOfDay()])->sum('total'),
@@ -234,7 +262,7 @@ class KasirController extends Controller
     public function tables(): View
     {
         $tables = RestaurantTable::query()
-            ->with(['orders' => fn ($q) => $q->latest()->with('orderItems')])
+            ->with(['orders' => fn ($q) => $q->whereIn('status', ['pending', 'confirmed', 'preparing', 'served'])->latest()->with('orderItems')])
             ->orderBy('table_number')
             ->get();
 

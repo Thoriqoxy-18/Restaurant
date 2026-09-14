@@ -11,6 +11,12 @@
     @stack('styles')
 </head>
 <body class="bg-background text-on-background font-body-md antialiased min-h-screen overflow-x-hidden">
+    @if (session('error'))
+    <div class="fixed top-4 left-1/2 -translate-x-1/2 z-[2000] max-w-sm w-[calc(100%-2rem)] bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm font-medium shadow-lg" role="alert">{{ session('error') }}</div>
+    @endif
+    @if (session('success'))
+    <div class="fixed top-4 left-1/2 -translate-x-1/2 z-[2000] max-w-sm w-[calc(100%-2rem)] bg-green-50 border border-green-200 text-green-700 rounded-xl px-4 py-3 text-sm font-medium shadow-lg" role="status">{{ session('success') }}</div>
+    @endif
     @yield('content')
     @stack('scripts')
 </body>

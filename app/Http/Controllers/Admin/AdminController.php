@@ -12,6 +12,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
@@ -59,6 +60,7 @@ class AdminController extends Controller
         $topMenus = DB::table('order_items')
             ->join('menu_items', 'menu_items.id', '=', 'order_items.menu_item_id')
             ->select('menu_items.name', 'menu_items.price', 'menu_items.image_path', DB::raw('SUM(order_items.quantity) as total'))
+            ->where('order_items.created_at', '>=', now()->subDays(30))
             ->groupBy('menu_items.id', 'menu_items.name', 'menu_items.price', 'menu_items.image_path')
             ->orderByDesc('total')
             ->take(5)
@@ -69,12 +71,24 @@ class AdminController extends Controller
 
     // ==================== MANAJEMEN MENU ====================
 
-    public function menuIndex(): View
+    public function menuIndex(Request $request): View
     {
-        $menus = MenuItem::with('category')->orderBy('name')->get();
+        $q = trim((string) $request->query('q'));
+        $cat = $request->query('cat', 'all');
+        $cat = is_string($cat) ? $cat : 'all';
+
+        $query = MenuItem::with('category')->orderBy('name');
+        if ($q !== '') {
+            $query->where('name', 'like', '%'.$q.'%');
+        }
+        if ($cat !== 'all') {
+            $query->whereHas('category', fn ($c) => $c->where('slug', $cat));
+        }
+
+        $menus = $query->paginate(20)->withQueryString();
         $categories = Category::orderBy('sort_order')->get();
 
-        return view('admin.menu.index', compact('menus', 'categories'));
+        return view('admin.menu.index', compact('menus', 'categories', 'q', 'cat'));
     }
 
     public function menuCreate(): View
@@ -165,32 +179,45 @@ class AdminController extends Controller
 
     protected function saveOptions(MenuItem $menu, Request $request): void
     {
-        foreach (['variations' => $menu->variations(), 'toppings' => $menu->toppings(), 'sauces' => $menu->sauces()] as $field => $relation) {
-            $relation->delete();
-            $rows = $request->input($field, []);
-            $i = 0;
-            foreach ($rows as $row) {
-                $name = is_array($row) ? trim((string) ($row['name'] ?? '')) : '';
-                if ($name !== '') {
-                    $relation->create([
-                        'menu_item_id' => $menu->id,
-                        'name' => mb_substr($name, 0, 255),
-                        'extra_price' => max(0, (float) ($row['extra_price'] ?? 0)),
-                        'sort_order' => $i,
-                    ]);
+        // Delete + create dilakukan atomik (all-or-nothing) agar opsi tidak hilang parsial
+        // saat terjadi kegagalan di tengah proses.
+        DB::transaction(function () use ($menu, $request) {
+            foreach (['variations' => $menu->variations(), 'toppings' => $menu->toppings(), 'sauces' => $menu->sauces()] as $field => $relation) {
+                $relation->delete();
+                $rows = is_array($request->input($field, [])) ? $request->input($field, []) : [];
+                $i = 0;
+                foreach ($rows as $row) {
+                    $name = is_array($row) ? trim((string) ($row['name'] ?? '')) : '';
+                    if ($name !== '') {
+                        $relation->create([
+                            'menu_item_id' => $menu->id,
+                            'name' => mb_substr($name, 0, 255),
+                            'extra_price' => max(0, (float) ($row['extra_price'] ?? 0)),
+                            'sort_order' => $i,
+                        ]);
+                    }
+                    $i++;
                 }
-                $i++;
             }
-        }
+        });
     }
 
     // ==================== MANAJEMEN PENGGUNA ====================
 
-    public function userIndex(): View
+    public function userIndex(Request $request): View
     {
-        $users = User::orderBy('role')->orderBy('name')->get();
+        $q = trim((string) $request->query('q'));
 
-        return view('admin.users.index', compact('users'));
+        $query = User::orderBy('role')->orderBy('name');
+        if ($q !== '') {
+            $query->where(function ($qq) use ($q) {
+                $qq->where('name', 'like', '%'.$q.'%')->orWhere('email', 'like', '%'.$q.'%');
+            });
+        }
+
+        $users = $query->paginate(20)->withQueryString();
+
+        return view('admin.users.index', compact('users', 'q'));
     }
 
     public function userStore(Request $request): RedirectResponse
@@ -270,11 +297,11 @@ class AdminController extends Controller
 
     public function tableQr(): View
     {
-        $tables = RestaurantTable::orderBy('table_number')->get();
+        $tables = RestaurantTable::orderBy('table_number')->paginate(24);
         $stats = [
-            'all' => $tables->count(),
-            'available' => $tables->where('status', 'available')->count(),
-            'occupied' => $tables->where('status', 'occupied')->count(),
+            'all' => RestaurantTable::count(),
+            'available' => RestaurantTable::where('status', 'available')->count(),
+            'occupied' => RestaurantTable::where('status', 'occupied')->count(),
         ];
 
         return view('admin.tables-qr.index', compact('tables', 'stats'));
@@ -287,17 +314,34 @@ class AdminController extends Controller
             'capacity' => ['required', 'integer', 'min:1'],
         ]);
 
-        $num = RestaurantTable::max('table_number') + 1;
-        $code = 'A'.str_pad((string) $num, 2, '0', STR_PAD_LEFT);
+        try {
+            // Generate nomor berikutnya secara serial (lock baris meja yang ada)
+            // supaya dua request bersamaan tidak mendapat nomor yang sama.
+            $num = DB::transaction(function () {
+                RestaurantTable::query()->lockForUpdate()->orderBy('id')->get();
 
-        // qr_token dibuat otomatis random oleh model (tidak bisa ditebak).
-        RestaurantTable::create([
-            'code' => $code,
-            'table_number' => $num,
-            'name' => $request->name,
-            'capacity' => (int) $request->capacity,
-            'status' => 'available',
-        ]);
+                return RestaurantTable::max('table_number') + 1;
+            });
+
+            $code = 'A'.str_pad((string) $num, 2, '0', STR_PAD_LEFT);
+
+            // qr_token dibuat otomatis random oleh model (tidak bisa ditebak).
+            RestaurantTable::create([
+                'code' => $code,
+                'table_number' => $num,
+                'name' => $request->name,
+                'capacity' => (int) $request->capacity,
+                'status' => 'available',
+            ]);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            Log::warning('Gagal menambah meja (nomor duplikat)', ['exception' => $e]);
+
+            return back()->with('error', 'Nomor meja sudah terpakai. Silakan coba lagi.');
+        } catch (\Throwable $e) {
+            Log::error('Gagal menambah meja', ['exception' => $e]);
+
+            return back()->with('error', 'Gagal menambah meja. Silakan coba lagi.');
+        }
 
         return redirect()->route('admin.tables')->with('success', 'Meja berhasil ditambahkan.');
     }
@@ -312,6 +356,14 @@ class AdminController extends Controller
     public function tableQrDownload(RestaurantTable $table)
     {
         $png = \App\Support\DemoQrCode::png(route('menu', $table), 14, 4);
+
+        // Jangan kirim file kosong dengan status 200 — laporkan kegagalan dengan jelas.
+        if ($png === '') {
+            Log::error('Gagal membuat QR PNG untuk unduhan meja', ['table_id' => $table->id]);
+
+            return back()->with('error', 'Gagal membuat QR meja. Silakan coba lagi.');
+        }
+
         $name = 'qr-meja-'.Str::slug($table->label).'.png';
         $headers = ['Content-Type' => 'image/png'];
 

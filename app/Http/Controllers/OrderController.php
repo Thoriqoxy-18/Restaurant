@@ -27,10 +27,19 @@ class OrderController extends Controller
     public function payment(Request $request, RestaurantTable $table)
     {
         // Store cart in session temporarily for the payment flow
-        $cart = json_decode($request->input('cart', '[]'), true);
+        $rawCart = $request->input('cart');
+        if (! is_string($rawCart) || strlen($rawCart) > 50000) {
+            return redirect()->route('menu', $table)->with('error', 'Data keranjang tidak valid atau terlalu besar.');
+        }
+
+        $cart = json_decode($rawCart, true);
 
         if (! is_array($cart) || empty($cart)) {
             return redirect()->route('menu', $table)->with('error', 'Keranjang Anda masih kosong. Silakan pilih menu terlebih dahulu.');
+        }
+
+        if (count($cart) > 50) {
+            return redirect()->route('menu', $table)->with('error', 'Terlalu banyak item dalam keranjang (maksimal 50).');
         }
 
         // Validasi struktur keranjang sebelum disimpan ke session.
@@ -44,6 +53,27 @@ class OrderController extends Controller
             }
             if (isset($item['notes']) && mb_strlen((string) $item['notes']) > 500) {
                 return redirect()->route('menu', $table)->with('error', 'Catatan terlalu panjang (maksimal 500 karakter).');
+            }
+        }
+
+        // Validasi dini variasi/topping/saus terhadap menu item (bukan menunggu confirm).
+        $menuItems = $this->loadCartMenuItems($cart);
+        foreach ($cart as $item) {
+            $menuItem = $menuItems[(int) $item['id']] ?? null;
+            if (! $menuItem) {
+                continue;
+            }
+            $variationId = (int) ($item['variation_id'] ?? 0);
+            if ($variationId > 0 && ! $menuItem->variations->contains('id', $variationId)) {
+                return redirect()->route('menu', $table)->with('error', 'Varian menu tidak valid.');
+            }
+            $toppingIds = is_array($item['topping_ids'] ?? null) ? array_filter(array_map('intval', $item['topping_ids'])) : [];
+            if (! empty($toppingIds) && $menuItem->toppings->whereIn('id', $toppingIds)->count() !== count($toppingIds)) {
+                return redirect()->route('menu', $table)->with('error', 'Topping menu tidak valid.');
+            }
+            $sauceIds = is_array($item['sauce_ids'] ?? null) ? array_filter(array_map('intval', $item['sauce_ids'])) : [];
+            if (! empty($sauceIds) && $menuItem->sauces->whereIn('id', $sauceIds)->count() !== count($sauceIds)) {
+                return redirect()->route('menu', $table)->with('error', 'Saus menu tidak valid.');
             }
         }
 
@@ -67,9 +97,10 @@ class OrderController extends Controller
         if (session('pending_cart_table_id') !== $table->id) {
             return false;
         }
+        // Sesi harus ada & cocok; session_id null dianggap tidak valid (bukan lolos).
         $session = $request->attributes->get('customer_session');
         $storedSession = session('pending_cart_session_id');
-        if ($storedSession !== null && ! ($session instanceof CustomerSession && $session->id === $storedSession)) {
+        if (! ($session instanceof CustomerSession) || $storedSession === null || $session->id !== $storedSession) {
             return false;
         }
 
@@ -134,11 +165,6 @@ class OrderController extends Controller
 
         if (! $idempotencyKey || ! $sessionKey || $idempotencyKey !== $sessionKey) {
             return redirect()->route('menu', $table)->with('error', 'Sesi pemesanan tidak valid. Silakan ulangi pemesanan Anda.');
-        }
-
-        // Cache::add bersifat atomik: hanya satu request yang berhasil claim key ini.
-        if (! Cache::add('order_idem_'.$idempotencyKey, true, now()->addHours(2))) {
-            return redirect()->route('menu', $table)->with('error', 'Pesanan ini sudah diproses. Jangan mengirim ulang pesanan.');
         }
 
         // Validasi metode & penyedia pembayaran (whitelist).
@@ -235,12 +261,18 @@ class OrderController extends Controller
         $tax = round($subtotal * 0.05, 2);
         $service = round($subtotal * 0.05, 2);
         $total = round($subtotal + $tax + $service, 2);
-        $orderNum = 'ORD-' . now()->format('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
+        $orderNum = 'ORD-' . now()->format('Ymd') . '-' . strtoupper(Str::random(6));
 
         // Semua pembayaran (Tunai & QRIS demo) mulai sebagai "Menunggu Pembayaran".
         // Status menjadi Lunas hanya setelah Kasir mengonfirmasi bahwa uang diterima.
         $paymentStatus = 'unpaid';
         $paymentProvider = $provider;
+
+        // Claim idempotency HANYA setelah semua validasi lolos, tepat sebelum order disimpan.
+        // Cache::add bersifat atomik: hanya satu request yang berhasil claim key ini.
+        if (! Cache::add('order_idem_'.$idempotencyKey, true, now()->addHours(2))) {
+            return redirect()->route('menu', $table)->with('error', 'Pesanan ini sudah diproses. Jangan mengirim ulang pesanan.');
+        }
 
         try {
             DB::beginTransaction();
@@ -259,23 +291,43 @@ class OrderController extends Controller
                 'total' => $total,
             ]);
 
+            // Bulk insert order_items, lalu map id untuk order_item_options (2 insert besar,
+            // bukan N+1 write per item).
+            $now = now();
+            $itemRows = [];
             foreach ($items as $itemData) {
-                $orderItem = OrderItem::create([
+                $itemRows[] = [
                     'order_id' => $order->id,
                     'menu_item_id' => $itemData['menu_item_id'],
                     'quantity' => $itemData['quantity'],
                     'price' => $itemData['price'],
                     'notes' => $itemData['notes'],
-                ]);
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+            OrderItem::insert($itemRows);
 
+            $insertedIds = OrderItem::where('order_id', $order->id)->orderBy('id')->pluck('id')->all();
+            $optionRows = [];
+            foreach (array_values($items) as $i => $itemData) {
+                $itemId = $insertedIds[$i] ?? null;
+                if ($itemId === null) {
+                    continue;
+                }
                 foreach ($itemData['options'] as $opt) {
-                    OrderItemOption::create([
-                        'order_item_id' => $orderItem->id,
+                    $optionRows[] = [
+                        'order_item_id' => $itemId,
                         'type' => $opt['type'],
                         'name' => $opt['name'],
                         'extra_price' => $opt['extra_price'],
-                    ]);
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
                 }
+            }
+            if (! empty($optionRows)) {
+                OrderItemOption::insert($optionRows);
             }
 
             DB::commit();
@@ -306,6 +358,11 @@ class OrderController extends Controller
     {
         $this->ensureOrderAccess($table, $order, $request);
         $order = $order->fresh();
+
+        // Order bisa terhapus di antara request (race) — jangan 500.
+        if (! $order) {
+            return response()->json(['error' => 'order tidak ditemukan'], 404);
+        }
 
         return response()->json(['status' => $order->status, 'payment_status' => $order->payment_status]);
     }

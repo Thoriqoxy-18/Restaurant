@@ -10,7 +10,13 @@ class MenuController extends Controller
 {
     public function index(RestaurantTable $table, \Illuminate\Http\Request $request): View
     {
-        $menuItems = MenuItem::with(['category', 'variations', 'toppings', 'sauces'])
+        $menuItems = MenuItem::with([
+                'category:id,name,slug',
+                'variations:id,menu_item_id,name,extra_price,sort_order',
+                'toppings:id,menu_item_id,name,extra_price,sort_order',
+                'sauces:id,menu_item_id,name,extra_price,sort_order',
+            ])
+            ->select(['id', 'name', 'slug', 'description', 'price', 'old_price', 'image_path', 'category_id', 'prep_time_minutes', 'is_vegan', 'has_spice_level', 'rating', 'is_signature', 'is_bestseller', 'is_available', 'created_at'])
             ->where('is_available', true)
             ->orderBy('is_signature', 'desc')
             ->orderBy('is_bestseller', 'desc')

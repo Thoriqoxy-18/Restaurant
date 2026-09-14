@@ -36,7 +36,18 @@ class GenerateTableQr extends Command
             $url = route('menu', $table);
             $png = DemoQrCode::png($url);
             $name = 'meja-'.str_pad((string) $table->table_number, 2, '0', STR_PAD_LEFT).'.png';
-            file_put_contents($dir.DIRECTORY_SEPARATOR.$name, $png);
+
+            // Jangan tulis file kosong bila generate gagal — laporkan error, bukan silent.
+            if ($png === '') {
+                $this->error("Gagal membuat QR untuk {$name} (token {$table->qr_token}).");
+                continue;
+            }
+
+            if (@file_put_contents($dir.DIRECTORY_SEPARATOR.$name, $png) === false) {
+                $this->error("Gagal menulis file {$name}.");
+                continue;
+            }
+
             $this->line("  {$name}  <-  {$url}");
         }
 

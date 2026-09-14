@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -45,6 +46,8 @@ class AuthController extends Controller
         ], $this->messages());
 
         if (! Auth::attempt($credentials, $request->boolean('remember'))) {
+            Log::warning('Percobaan login gagal', ['email' => $request->input('email'), 'ip' => $request->ip()]);
+
             throw ValidationException::withMessages([
                 'email' => 'Email atau password salah.',
             ]);
@@ -52,6 +55,7 @@ class AuthController extends Controller
 
         // Akun yang dinonaktifkan tidak boleh login.
         if (! Auth::user()->is_active) {
+            Log::warning('Login diblokir: akun nonaktif', ['email' => $request->input('email'), 'ip' => $request->ip()]);
             Auth::logout();
             $request->session()->invalidate();
             $request->session()->regenerateToken();
